@@ -1,0 +1,29 @@
+{
+  "name": "minijira",
+  "version": "1.0.0",
+  "description": "A small Jira-style application made for learning purposes",
+  "scripts": {
+    "dev": "concurrently \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "dev:server": "npm run dev --prefix server",
+    "dev:client": "npm run dev --prefix client",
+    "db:up": "docker compose up -d",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RemLezar99/MiniJira.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/RemLezar99/MiniJira/issues"
+  },
+  "homepage": "https://github.com/RemLezar99/MiniJira#readme",
+  "devDependencies": {
+    "concurrently": "^10.0.3"
+  }
+}
+
+

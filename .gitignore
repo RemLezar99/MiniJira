@@ -1,0 +1,153 @@
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Build outputs
+dist/
+build/
+client/dist/
+server/dist/
+# Environment files
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+client/.env
+client/.env.local
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Build outputs
+dist/
+build/
+client/dist/
+server/dist/
+
+# TypeScript
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.*
+client/.env
+client/.env.*
+server/.env
+server/.env.*
+
+# Keep example env files
+!.env.example
+!client/.env.example
+!server/.env.example
+
+# =========================
+# Dependencies
+# =========================
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# =========================
+# Build outputs
+# =========================
+dist/
+build/
+client/dist/
+server/dist/
+
+# =========================
+# TypeScript
+# =========================
+*.tsbuildinfo
+
+# =========================
+# Environment files
+# =========================
+.env
+.env.*
+client/.env
+client/.env.*
+server/.env
+server/.env.*
+
+# Keep environment templates
+!.env.example
+!client/.env.example
+!server/.env.example
+
+# =========================
+# Logs
+# =========================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# =========================
+# Runtime/process files
+# =========================
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# =========================
+# Coverage
+# =========================
+coverage/
+client/coverage/
+server/coverage/
+
+# =========================
+# Vite
+# =========================
+client/.vite/
+
+# =========================
+# Prisma
+# =========================
+
+# Prisma 7 generated client, because we generate it locally with:
+# npx prisma generate
+server/src/generated/prisma/
+
+# Keep schema and migrations committed
+!server/prisma/schema.prisma
+!server/prisma/migrations/
+
+# =========================
+# Database/local files
+# =========================
+*.db
+*.sqlite
+*.sqlite3
+
+# =========================
+# Docker/local volume artifacts
+# =========================
+.docker/
+docker-data/
+
+# =========================
+# OS files
+# =========================
+.DS_Store
+Thumbs.db
+
+# =========================
+# Editor files
+# =========================
+.vscode/
+.idea/
+
+# =========================
+# Cache/temp
+# =========================
+.cache/
+tmp/
+temp/
