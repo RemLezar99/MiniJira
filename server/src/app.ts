@@ -6,6 +6,7 @@ import { prisma } from "./lib/prisma.js";
 import { requestLogger } from "./middleware/requestLogger.js";
 import { errorMiddleware } from "./middleware/errorMiddleware.js";
 import { devLogRoutes } from "./routes/devLogRoutes.js";
+import { authRoutes } from "./routes/auth.routes.js";
 
 export const app = express();
 
@@ -23,9 +24,12 @@ app.use(
 app.use(express.json());
 app.use(cookieParser());
 
+
 if (env.NODE_ENV === "development" && env.ENABLE_DEV_LOG_VIEWER) {
   app.use("/dev/logs", devLogRoutes);
 }
+
+app.use("/auth", authRoutes);
 
 app.get("/", (_req, res) => {
   res.set("Cache-Control", "no-store");
