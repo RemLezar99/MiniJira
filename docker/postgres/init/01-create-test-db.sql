@@ -1,0 +1,1 @@
+CREATE DATABASE mini_jira_test;
