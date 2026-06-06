@@ -88,6 +88,7 @@ app.get("/", (_req, res) => {
         <ul>
           <li><a href="/projects"><code>GET /projects</code></a> — requires login cookie</li>
           <li><code>POST /projects</code> — requires login cookie</li>
+          <li><code>GET /projects/:projectId</code> — requires login cookie and project membership</li>
         </ul>
 
         <p class="note">
