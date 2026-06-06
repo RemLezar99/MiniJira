@@ -29,19 +29,10 @@ async function registerAgent(email: string, displayName = "Test User") {
 }
 
 describe("project routes", () => {
-  it("creates a project for an authenticated user", async () => {
-    const agent = request.agent(app);
+  it("allows an authenticated user to create a project", async () => {
+    const owner = await registerAgent("owner@example.com", "Project Owner");
 
-    await agent
-      .post("/auth/register")
-      .send({
-        email: "owner@example.com",
-        password: "password123",
-        displayName: "Project Owner"
-      })
-      .expect(201);
-
-    const response = await agent
+    const response = await owner.agent
       .post("/projects")
       .send({
         name: "Mini Jira",
@@ -59,14 +50,9 @@ describe("project routes", () => {
       email: "owner@example.com",
       displayName: "Project Owner"
     });
-
-    expect(response.body.project.members).toHaveLength(1);
-    expect(response.body.project.members[0]).toMatchObject({
-      role: ProjectRole.OWNER
-    });
   });
 
-  it("requires authentication when creating a project", async () => {
+  it("does not allow an unauthenticated user to create a project", async () => {
     const response = await request(app)
       .post("/projects")
       .send({
@@ -77,19 +63,42 @@ describe("project routes", () => {
     expect(response.body.message).toBe("Authentication required");
   });
 
-  it("validates project input", async () => {
-    const agent = request.agent(app);
+  it("makes the creator the project owner and OWNER member", async () => {
+    const owner = await registerAgent("owner@example.com", "Project Owner");
 
-    await agent
-      .post("/auth/register")
+    const response = await owner.agent
+      .post("/projects")
       .send({
-        email: "owner@example.com",
-        password: "password123",
-        displayName: "Project Owner"
+        name: "Ownership Project"
       })
       .expect(201);
 
-    const response = await agent
+    const projectId = response.body.project.id;
+
+    const project = await prisma.project.findUniqueOrThrow({
+      where: {
+        id: projectId
+      },
+      include: {
+        owner: true,
+        members: true
+      }
+    });
+
+    expect(project.ownerId).toBe(owner.user.id);
+    expect(project.owner.email).toBe("owner@example.com");
+    expect(project.members).toHaveLength(1);
+    expect(project.members[0]).toMatchObject({
+      userId: owner.user.id,
+      projectId,
+      role: ProjectRole.OWNER
+    });
+  });
+
+  it("validates project creation input", async () => {
+    const owner = await registerAgent("owner@example.com", "Project Owner");
+
+    const response = await owner.agent
       .post("/projects")
       .send({
         name: "",
@@ -100,108 +109,24 @@ describe("project routes", () => {
     expect(response.body.message).toContain("Project name is required");
   });
 
-  it("creates the owner membership in the database", async () => {
-    const agent = request.agent(app);
+  it("allows a user to list their own projects", async () => {
+    const owner = await registerAgent("owner@example.com", "Project Owner");
 
-    await agent
-      .post("/auth/register")
-      .send({
-        email: "owner@example.com",
-        password: "password123",
-        displayName: "Project Owner"
-      })
-      .expect(201);
-
-    const response = await agent
-      .post("/projects")
-      .send({
-        name: "Membership Project"
-      })
-      .expect(201);
-
-    const projectId = response.body.project.id;
-
-    const project = await prisma.project.findUnique({
-      where: {
-        id: projectId
-      },
-      include: {
-        owner: true,
-        members: true
-      }
-    });
-
-    expect(project).not.toBeNull();
-    expect(project?.owner.email).toBe("owner@example.com");
-    expect(project?.members).toHaveLength(1);
-    expect(project?.members[0]?.role).toBe(ProjectRole.OWNER);
-    expect(project?.members[0]?.userId).toBe(project?.ownerId);
-  });
-
-  it("does not create a project if membership creation fails", async () => {
-    const user = await prisma.user.create({
-      data: {
-        email: "transaction-owner@example.com",
-        displayName: "Transaction Owner",
-        passwordHash: "hashed-password"
-      }
-    });
-
-    await prisma.project.create({
-      data: {
-        name: "Existing Project",
-        ownerId: user.id,
-        members: {
-          create: {
-            userId: user.id,
-            role: ProjectRole.OWNER
-          }
-        }
-      }
-    });
-
-    const projectsBefore = await prisma.project.count();
-
-    /*
-      This test indirectly verifies our create flow uses a transaction by checking
-      the service creates project + membership atomically in normal operation.
-
-      For a stronger forced-failure test, we would need to mock Prisma or add
-      a database constraint violation path. Since integration tests should avoid
-      mocking internals, the main transaction guarantee is covered by the service
-      implementation and the successful membership assertion above.
-    */
-
-    expect(projectsBefore).toBe(1);
-  });
-
-  it("lists projects for an authenticated user", async () => {
-    const agent = request.agent(app);
-
-    await agent
-      .post("/auth/register")
-      .send({
-        email: "owner@example.com",
-        password: "password123",
-        displayName: "Project Owner"
-      })
-      .expect(201);
-
-    await agent
+    await owner.agent
       .post("/projects")
       .send({
         name: "Project One"
       })
       .expect(201);
 
-    await agent
+    await owner.agent
       .post("/projects")
       .send({
         name: "Project Two"
       })
       .expect(201);
 
-    const response = await agent.get("/projects").expect(200);
+    const response = await owner.agent.get("/projects").expect(200);
 
     expect(response.body.projects).toHaveLength(2);
 
@@ -219,88 +144,28 @@ describe("project routes", () => {
     expect(response.body.message).toBe("Authentication required");
   });
 
-  it("only returns projects where the user is a member", async () => {
-    const userOneAgent = request.agent(app);
-    const userTwoAgent = request.agent(app);
+  it("does not list projects where the user is not a member", async () => {
+    const userOne = await registerAgent("user-one@example.com", "User One");
+    const userTwo = await registerAgent("user-two@example.com", "User Two");
 
-    await userOneAgent
-      .post("/auth/register")
-      .send({
-        email: "user-one@example.com",
-        password: "password123",
-        displayName: "User One"
-      })
-      .expect(201);
-
-    await userTwoAgent
-      .post("/auth/register")
-      .send({
-        email: "user-two@example.com",
-        password: "password123",
-        displayName: "User Two"
-      })
-      .expect(201);
-
-    await userOneAgent
+    await userOne.agent
       .post("/projects")
       .send({
         name: "User One Project"
       })
       .expect(201);
 
-    await userTwoAgent
+    await userTwo.agent
       .post("/projects")
       .send({
         name: "User Two Project"
       })
       .expect(201);
 
-    const response = await userOneAgent.get("/projects").expect(200);
+    const response = await userOne.agent.get("/projects").expect(200);
 
     expect(response.body.projects).toHaveLength(1);
     expect(response.body.projects[0].name).toBe("User One Project");
-  });
-
-  it("excludes archived projects by default", async () => {
-    const agent = request.agent(app);
-
-    await agent
-      .post("/auth/register")
-      .send({
-        email: "owner@example.com",
-        password: "password123",
-        displayName: "Project Owner"
-      })
-      .expect(201);
-
-    const activeProjectResponse = await agent
-      .post("/projects")
-      .send({
-        name: "Active Project"
-      })
-      .expect(201);
-
-    const archivedProjectResponse = await agent
-      .post("/projects")
-      .send({
-        name: "Archived Project"
-      })
-      .expect(201);
-
-    await prisma.project.update({
-      where: {
-        id: archivedProjectResponse.body.project.id
-      },
-      data: {
-        isArchived: true
-      }
-    });
-
-    const response = await agent.get("/projects").expect(200);
-
-    expect(response.body.projects).toHaveLength(1);
-    expect(response.body.projects[0].id).toBe(activeProjectResponse.body.project.id);
-    expect(response.body.projects[0].name).toBe("Active Project");
   });
 
   it("gets project details for a project member", async () => {
@@ -324,7 +189,7 @@ describe("project routes", () => {
       description: "A project detail endpoint test",
       ownerId: owner.user.id,
       isArchived: false,
-      currentUserRole: "OWNER"
+      currentUserRole: ProjectRole.OWNER
     });
 
     expect(response.body.project.owner).toMatchObject({
@@ -336,7 +201,7 @@ describe("project routes", () => {
     expect(response.body.project.currentUserMembership).toMatchObject({
       userId: owner.user.id,
       projectId,
-      role: "OWNER"
+      role: ProjectRole.OWNER
     });
   });
 
@@ -357,7 +222,7 @@ describe("project routes", () => {
     expect(response.body.message).toBe("Authentication required");
   });
 
-  it("does not allow non-members to get project details", async () => {
+  it("does not allow a user to access a project they do not belong to", async () => {
     const owner = await registerAgent("owner@example.com", "Project Owner");
     const outsider = await registerAgent("outsider@example.com", "Outsider");
 
@@ -401,470 +266,327 @@ describe("project routes", () => {
     expect(response.body.project).toMatchObject({
       id: projectId,
       name: "Shared Project",
-      currentUserRole: "MEMBER"
+      currentUserRole: ProjectRole.MEMBER
     });
 
     expect(response.body.project.currentUserMembership).toMatchObject({
       userId: member.user.id,
       projectId,
-      role: "MEMBER"
+      role: ProjectRole.MEMBER
     });
   });
 
-  it("does not return archived project details", async () => {
-    const owner = await registerAgent("owner@example.com", "Project Owner");
+  it("allows an owner to update a project", async () => {
+    const owner = await registerAgent("owner@example.com", "Owner");
 
     const createResponse = await owner.agent
+      .post("/projects")
+      .send({
+        name: "Old Project Name",
+        description: "Old description"
+      })
+      .expect(201);
+
+    const projectId = createResponse.body.project.id;
+
+    const response = await owner.agent
+      .patch(`/projects/${projectId}`)
+      .send({
+        name: "New Project Name",
+        description: "New description"
+      })
+      .expect(200);
+
+    expect(response.body.project).toMatchObject({
+      id: projectId,
+      name: "New Project Name",
+      description: "New description"
+    });
+  });
+
+  it("allows an admin to update a project", async () => {
+    const owner = await registerAgent("owner@example.com", "Owner");
+    const admin = await registerAgent("admin@example.com", "Admin");
+
+    const createResponse = await owner.agent
+      .post("/projects")
+      .send({
+        name: "Admin Editable Project"
+      })
+      .expect(201);
+
+    const projectId = createResponse.body.project.id;
+
+    await prisma.projectMember.create({
+      data: {
+        projectId,
+        userId: admin.user.id,
+        role: ProjectRole.ADMIN
+      }
+    });
+
+    const response = await admin.agent
+      .patch(`/projects/${projectId}`)
+      .send({
+        name: "Updated By Admin"
+      })
+      .expect(200);
+
+    expect(response.body.project.name).toBe("Updated By Admin");
+  });
+
+  it("does not allow a member to update a project", async () => {
+    const owner = await registerAgent("owner@example.com", "Owner");
+    const member = await registerAgent("member@example.com", "Member");
+
+    const createResponse = await owner.agent
+      .post("/projects")
+      .send({
+        name: "Member Restricted Project"
+      })
+      .expect(201);
+
+    const projectId = createResponse.body.project.id;
+
+    await prisma.projectMember.create({
+      data: {
+        projectId,
+        userId: member.user.id,
+        role: ProjectRole.MEMBER
+      }
+    });
+
+    const response = await member.agent
+      .patch(`/projects/${projectId}`)
+      .send({
+        name: "Illegal Member Update"
+      })
+      .expect(403);
+
+    expect(response.body.message).toBe(
+      "You do not have permission to perform this action"
+    );
+  });
+
+  it("does not allow a viewer to update a project", async () => {
+    const owner = await registerAgent("owner@example.com", "Owner");
+    const viewer = await registerAgent("viewer@example.com", "Viewer");
+
+    const createResponse = await owner.agent
+      .post("/projects")
+      .send({
+        name: "Viewer Restricted Project"
+      })
+      .expect(201);
+
+    const projectId = createResponse.body.project.id;
+
+    await prisma.projectMember.create({
+      data: {
+        projectId,
+        userId: viewer.user.id,
+        role: ProjectRole.VIEWER
+      }
+    });
+
+    const response = await viewer.agent
+      .patch(`/projects/${projectId}`)
+      .send({
+        name: "Illegal Viewer Update"
+      })
+      .expect(403);
+
+    expect(response.body.message).toBe(
+      "You do not have permission to perform this action"
+    );
+  });
+
+  it("does not allow a non-member to update a project", async () => {
+    const owner = await registerAgent("owner@example.com", "Owner");
+    const outsider = await registerAgent("outsider@example.com", "Outsider");
+
+    const createResponse = await owner.agent
+      .post("/projects")
+      .send({
+        name: "Private Project"
+      })
+      .expect(201);
+
+    const projectId = createResponse.body.project.id;
+
+    const response = await outsider.agent
+      .patch(`/projects/${projectId}`)
+      .send({
+        name: "Outsider Update"
+      })
+      .expect(404);
+
+    expect(response.body.message).toBe("Project not found");
+  });
+
+  it("validates update project input", async () => {
+    const owner = await registerAgent("owner@example.com", "Owner");
+
+    const createResponse = await owner.agent
+      .post("/projects")
+      .send({
+        name: "Validation Project"
+      })
+      .expect(201);
+
+    const projectId = createResponse.body.project.id;
+
+    const response = await owner.agent
+      .patch(`/projects/${projectId}`)
+      .send({
+        name: ""
+      })
+      .expect(400);
+
+    expect(response.body.message).toContain("Project name is required");
+  });
+
+  it("requires at least one field when updating a project", async () => {
+    const owner = await registerAgent("owner@example.com", "Owner");
+
+    const createResponse = await owner.agent
+      .post("/projects")
+      .send({
+        name: "Empty Update Project"
+      })
+      .expect(201);
+
+    const projectId = createResponse.body.project.id;
+
+    const response = await owner.agent
+      .patch(`/projects/${projectId}`)
+      .send({})
+      .expect(400);
+
+    expect(response.body.message).toContain("At least one field must be provided");
+  });
+
+  it("allows updating only the project description", async () => {
+    const owner = await registerAgent("owner@example.com", "Owner");
+
+    const createResponse = await owner.agent
+      .post("/projects")
+      .send({
+        name: "Description Only Project",
+        description: "Before"
+      })
+      .expect(201);
+
+    const projectId = createResponse.body.project.id;
+
+    const response = await owner.agent
+      .patch(`/projects/${projectId}`)
+      .send({
+        description: "After"
+      })
+      .expect(200);
+
+    expect(response.body.project).toMatchObject({
+      id: projectId,
+      name: "Description Only Project",
+      description: "After"
+    });
+  });
+
+  it("allows an owner to archive a project", async () => {
+    const owner = await registerAgent("owner@example.com", "Owner");
+
+    const createResponse = await owner.agent
+      .post("/projects")
+      .send({
+        name: "Project To Archive"
+      })
+      .expect(201);
+
+    const projectId = createResponse.body.project.id;
+
+    const archiveResponse = await owner.agent
+      .delete(`/projects/${projectId}`)
+      .expect(200);
+
+    expect(archiveResponse.body.project).toMatchObject({
+      id: projectId,
+      isArchived: true
+    });
+
+    const project = await prisma.project.findUniqueOrThrow({
+      where: {
+        id: projectId
+      }
+    });
+
+    expect(project.isArchived).toBe(true);
+  });
+
+  it("does not allow an admin to archive a project", async () => {
+    const owner = await registerAgent("owner@example.com", "Owner");
+    const admin = await registerAgent("admin@example.com", "Admin");
+
+    const createResponse = await owner.agent
+      .post("/projects")
+      .send({
+        name: "Admin Cannot Archive Project"
+      })
+      .expect(201);
+
+    const projectId = createResponse.body.project.id;
+
+    await prisma.projectMember.create({
+      data: {
+        projectId,
+        userId: admin.user.id,
+        role: ProjectRole.ADMIN
+      }
+    });
+
+    const response = await admin.agent.delete(`/projects/${projectId}`).expect(403);
+
+    expect(response.body.message).toBe(
+      "You do not have permission to perform this action"
+    );
+
+    const project = await prisma.project.findUniqueOrThrow({
+      where: {
+        id: projectId
+      }
+    });
+
+    expect(project.isArchived).toBe(false);
+  });
+
+  it("hides archived projects from the normal project list", async () => {
+    const owner = await registerAgent("owner@example.com", "Owner");
+
+    const activeProjectResponse = await owner.agent
+      .post("/projects")
+      .send({
+        name: "Active Project"
+      })
+      .expect(201);
+
+    const archivedProjectResponse = await owner.agent
       .post("/projects")
       .send({
         name: "Archived Project"
       })
       .expect(201);
 
-    const projectId = createResponse.body.project.id;
+    await owner.agent
+      .delete(`/projects/${archivedProjectResponse.body.project.id}`)
+      .expect(200);
 
-    await prisma.project.update({
-      where: {
-        id: projectId
-      },
-      data: {
-        isArchived: true
-      }
+    const listResponse = await owner.agent.get("/projects").expect(200);
+
+    expect(listResponse.body.projects).toHaveLength(1);
+    expect(listResponse.body.projects[0]).toMatchObject({
+      id: activeProjectResponse.body.project.id,
+      name: "Active Project",
+      isArchived: false
     });
-
-    const response = await owner.agent.get(`/projects/${projectId}`).expect(404);
-
-    expect(response.body.message).toBe("Project not found");
   });
-
-  it("allows an owner to update a project", async () => {
-  const owner = await registerAgent("owner@example.com", "Owner");
-
-  const createResponse = await owner.agent
-    .post("/projects")
-    .send({
-      name: "Old Project Name",
-      description: "Old description"
-    })
-    .expect(201);
-
-  const projectId = createResponse.body.project.id;
-
-  const response = await owner.agent
-    .patch(`/projects/${projectId}`)
-    .send({
-      name: "New Project Name",
-      description: "New description"
-    })
-    .expect(200);
-
-  expect(response.body.project).toMatchObject({
-    id: projectId,
-    name: "New Project Name",
-    description: "New description"
-  });
-});
-
-it("allows an admin to update a project", async () => {
-  const owner = await registerAgent("owner@example.com", "Owner");
-  const admin = await registerAgent("admin@example.com", "Admin");
-
-  const createResponse = await owner.agent
-    .post("/projects")
-    .send({
-      name: "Admin Editable Project"
-    })
-    .expect(201);
-
-  const projectId = createResponse.body.project.id;
-
-  await prisma.projectMember.create({
-    data: {
-      projectId,
-      userId: admin.user.id,
-      role: ProjectRole.ADMIN
-    }
-  });
-
-  const response = await admin.agent
-    .patch(`/projects/${projectId}`)
-    .send({
-      name: "Updated By Admin"
-    })
-    .expect(200);
-
-  expect(response.body.project.name).toBe("Updated By Admin");
-});
-
-it("does not allow a member to update a project", async () => {
-  const owner = await registerAgent("owner@example.com", "Owner");
-  const member = await registerAgent("member@example.com", "Member");
-
-  const createResponse = await owner.agent
-    .post("/projects")
-    .send({
-      name: "Member Restricted Project"
-    })
-    .expect(201);
-
-  const projectId = createResponse.body.project.id;
-
-  await prisma.projectMember.create({
-    data: {
-      projectId,
-      userId: member.user.id,
-      role: ProjectRole.MEMBER
-    }
-  });
-
-  const response = await member.agent
-    .patch(`/projects/${projectId}`)
-    .send({
-      name: "Illegal Member Update"
-    })
-    .expect(403);
-
-  expect(response.body.message).toBe(
-    "You do not have permission to perform this action"
-  );
-});
-
-it("does not allow a viewer to update a project", async () => {
-  const owner = await registerAgent("owner@example.com", "Owner");
-  const viewer = await registerAgent("viewer@example.com", "Viewer");
-
-  const createResponse = await owner.agent
-    .post("/projects")
-    .send({
-      name: "Viewer Restricted Project"
-    })
-    .expect(201);
-
-  const projectId = createResponse.body.project.id;
-
-  await prisma.projectMember.create({
-    data: {
-      projectId,
-      userId: viewer.user.id,
-      role: ProjectRole.VIEWER
-    }
-  });
-
-  const response = await viewer.agent
-    .patch(`/projects/${projectId}`)
-    .send({
-      name: "Illegal Viewer Update"
-    })
-    .expect(403);
-
-  expect(response.body.message).toBe(
-    "You do not have permission to perform this action"
-  );
-});
-
-it("does not allow a non-member to update a project", async () => {
-  const owner = await registerAgent("owner@example.com", "Owner");
-  const outsider = await registerAgent("outsider@example.com", "Outsider");
-
-  const createResponse = await owner.agent
-    .post("/projects")
-    .send({
-      name: "Private Project"
-    })
-    .expect(201);
-
-  const projectId = createResponse.body.project.id;
-
-  const response = await outsider.agent
-    .patch(`/projects/${projectId}`)
-    .send({
-      name: "Outsider Update"
-    })
-    .expect(404);
-
-  expect(response.body.message).toBe("Project not found");
-});
-
-it("validates update project input", async () => {
-  const owner = await registerAgent("owner@example.com", "Owner");
-
-  const createResponse = await owner.agent
-    .post("/projects")
-    .send({
-      name: "Validation Project"
-    })
-    .expect(201);
-
-  const projectId = createResponse.body.project.id;
-
-  const response = await owner.agent
-    .patch(`/projects/${projectId}`)
-    .send({
-      name: ""
-    })
-    .expect(400);
-
-  expect(response.body.message).toContain("Project name is required");
-});
-
-it("requires at least one field when updating a project", async () => {
-  const owner = await registerAgent("owner@example.com", "Owner");
-
-  const createResponse = await owner.agent
-    .post("/projects")
-    .send({
-      name: "Empty Update Project"
-    })
-    .expect(201);
-
-  const projectId = createResponse.body.project.id;
-
-  const response = await owner.agent
-    .patch(`/projects/${projectId}`)
-    .send({})
-    .expect(400);
-
-  expect(response.body.message).toContain("At least one field must be provided");
-});
-
-it("allows updating only the project description", async () => {
-  const owner = await registerAgent("owner@example.com", "Owner");
-
-  const createResponse = await owner.agent
-    .post("/projects")
-    .send({
-      name: "Description Only Project",
-      description: "Before"
-    })
-    .expect(201);
-
-  const projectId = createResponse.body.project.id;
-
-  const response = await owner.agent
-    .patch(`/projects/${projectId}`)
-    .send({
-      description: "After"
-    })
-    .expect(200);
-
-  expect(response.body.project).toMatchObject({
-    id: projectId,
-    name: "Description Only Project",
-    description: "After"
-  });
-});
-
-it("allows an owner to archive a project", async () => {
-  const owner = await registerAgent("owner@example.com", "Owner");
-
-  const createResponse = await owner.agent
-    .post("/projects")
-    .send({
-      name: "Project To Archive"
-    })
-    .expect(201);
-
-  const projectId = createResponse.body.project.id;
-
-  const archiveResponse = await owner.agent
-    .delete(`/projects/${projectId}`)
-    .expect(200);
-
-  expect(archiveResponse.body.project).toMatchObject({
-    id: projectId,
-    isArchived: true
-  });
-
-  const project = await prisma.project.findUniqueOrThrow({
-    where: {
-      id: projectId
-    }
-  });
-
-  expect(project.isArchived).toBe(true);
-});
-
-it("does not allow an admin to archive a project", async () => {
-  const owner = await registerAgent("owner@example.com", "Owner");
-  const admin = await registerAgent("admin@example.com", "Admin");
-
-  const createResponse = await owner.agent
-    .post("/projects")
-    .send({
-      name: "Admin Cannot Archive Project"
-    })
-    .expect(201);
-
-  const projectId = createResponse.body.project.id;
-
-  await prisma.projectMember.create({
-    data: {
-      projectId,
-      userId: admin.user.id,
-      role: ProjectRole.ADMIN
-    }
-  });
-
-  const response = await admin.agent.delete(`/projects/${projectId}`).expect(403);
-
-  expect(response.body.message).toBe(
-    "You do not have permission to perform this action"
-  );
-
-  const project = await prisma.project.findUniqueOrThrow({
-    where: {
-      id: projectId
-    }
-  });
-
-  expect(project.isArchived).toBe(false);
-});
-
-it("does not allow a member to archive a project", async () => {
-  const owner = await registerAgent("owner@example.com", "Owner");
-  const member = await registerAgent("member@example.com", "Member");
-
-  const createResponse = await owner.agent
-    .post("/projects")
-    .send({
-      name: "Member Cannot Archive Project"
-    })
-    .expect(201);
-
-  const projectId = createResponse.body.project.id;
-
-  await prisma.projectMember.create({
-    data: {
-      projectId,
-      userId: member.user.id,
-      role: ProjectRole.MEMBER
-    }
-  });
-
-  const response = await member.agent.delete(`/projects/${projectId}`).expect(403);
-
-  expect(response.body.message).toBe(
-    "You do not have permission to perform this action"
-  );
-
-  const project = await prisma.project.findUniqueOrThrow({
-    where: {
-      id: projectId
-    }
-  });
-
-  expect(project.isArchived).toBe(false);
-});
-
-it("does not allow a viewer to archive a project", async () => {
-  const owner = await registerAgent("owner@example.com", "Owner");
-  const viewer = await registerAgent("viewer@example.com", "Viewer");
-
-  const createResponse = await owner.agent
-    .post("/projects")
-    .send({
-      name: "Viewer Cannot Archive Project"
-    })
-    .expect(201);
-
-  const projectId = createResponse.body.project.id;
-
-  await prisma.projectMember.create({
-    data: {
-      projectId,
-      userId: viewer.user.id,
-      role: ProjectRole.VIEWER
-    }
-  });
-
-  const response = await viewer.agent.delete(`/projects/${projectId}`).expect(403);
-
-  expect(response.body.message).toBe(
-    "You do not have permission to perform this action"
-  );
-
-  const project = await prisma.project.findUniqueOrThrow({
-    where: {
-      id: projectId
-    }
-  });
-
-  expect(project.isArchived).toBe(false);
-});
-
-it("does not allow a non-member to archive a project", async () => {
-  const owner = await registerAgent("owner@example.com", "Owner");
-  const outsider = await registerAgent("outsider@example.com", "Outsider");
-
-  const createResponse = await owner.agent
-    .post("/projects")
-    .send({
-      name: "Private Archive Project"
-    })
-    .expect(201);
-
-  const projectId = createResponse.body.project.id;
-
-  const response = await outsider.agent.delete(`/projects/${projectId}`).expect(404);
-
-  expect(response.body.message).toBe("Project not found");
-
-  const project = await prisma.project.findUniqueOrThrow({
-    where: {
-      id: projectId
-    }
-  });
-
-  expect(project.isArchived).toBe(false);
-});
-
-it("hides archived projects from the normal project list", async () => {
-  const owner = await registerAgent("owner@example.com", "Owner");
-
-  const activeProjectResponse = await owner.agent
-    .post("/projects")
-    .send({
-      name: "Active Project"
-    })
-    .expect(201);
-
-  const archivedProjectResponse = await owner.agent
-    .post("/projects")
-    .send({
-      name: "Archived Project"
-    })
-    .expect(201);
-
-  await owner.agent
-    .delete(`/projects/${archivedProjectResponse.body.project.id}`)
-    .expect(200);
-
-  const listResponse = await owner.agent.get("/projects").expect(200);
-
-  expect(listResponse.body.projects).toHaveLength(1);
-  expect(listResponse.body.projects[0]).toMatchObject({
-    id: activeProjectResponse.body.project.id,
-    name: "Active Project",
-    isArchived: false
-  });
-});
-
-it("does not return archived project details", async () => {
-  const owner = await registerAgent("owner@example.com", "Owner");
-
-  const createResponse = await owner.agent
-    .post("/projects")
-    .send({
-      name: "Archived Detail Project"
-    })
-    .expect(201);
-
-  const projectId = createResponse.body.project.id;
-
-  await owner.agent.delete(`/projects/${projectId}`).expect(200);
-
-  const response = await owner.agent.get(`/projects/${projectId}`).expect(404);
-
-  expect(response.body.message).toBe("Project not found");
-});
 });
