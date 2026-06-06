@@ -1,11 +1,16 @@
-import { createBrowserRouter } from "react-router-dom";
+import { createBrowserRouter, Link } from "react-router-dom";
 import { AuthStatus } from "../features/auth/components/AuthStatus";
+import { RegisterPage } from "../features/auth/pages/RegisterPage";
 
 function HomePage() {
   return (
     <main>
       <h1>Mini Jira</h1>
       <p>Project issue tracking app.</p>
+
+      <nav>
+        <Link to="/register">Register</Link>
+      </nav>
 
       <AuthStatus />
     </main>
@@ -20,18 +25,11 @@ function LoginPage() {
   );
 }
 
-function RegisterPage() {
-  return (
-    <main>
-      <h1>Register</h1>
-    </main>
-  );
-}
-
 function ProjectsPage() {
   return (
     <main>
       <h1>Projects</h1>
+      <AuthStatus />
     </main>
   );
 }
