@@ -1,10 +1,13 @@
 import { createBrowserRouter } from "react-router-dom";
+import { AuthStatus } from "../features/auth/components/AuthStatus";
 
 function HomePage() {
   return (
     <main>
       <h1>Mini Jira</h1>
       <p>Project issue tracking app.</p>
+
+      <AuthStatus />
     </main>
   );
 }
