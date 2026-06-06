@@ -151,3 +151,131 @@ describe("project routes", () => {
     expect(projectsBefore).toBe(1);
   });
 });
+
+it("lists projects for an authenticated user", async () => {
+  const agent = request.agent(app);
+
+  await agent
+    .post("/auth/register")
+    .send({
+      email: "owner@example.com",
+      password: "password123",
+      displayName: "Project Owner"
+    })
+    .expect(201);
+
+  await agent
+    .post("/projects")
+    .send({
+      name: "Project One"
+    })
+    .expect(201);
+
+  await agent
+    .post("/projects")
+    .send({
+      name: "Project Two"
+    })
+    .expect(201);
+
+  const response = await agent.get("/projects").expect(200);
+
+  expect(response.body.projects).toHaveLength(2);
+
+  const projectNames = response.body.projects.map(
+    (project: { name: string }) => project.name
+  );
+
+  expect(projectNames).toContain("Project One");
+  expect(projectNames).toContain("Project Two");
+});
+
+it("requires authentication when listing projects", async () => {
+  const response = await request(app).get("/projects").expect(401);
+
+  expect(response.body.message).toBe("Authentication required");
+});
+
+it("only returns projects where the user is a member", async () => {
+  const userOneAgent = request.agent(app);
+  const userTwoAgent = request.agent(app);
+
+  await userOneAgent
+    .post("/auth/register")
+    .send({
+      email: "user-one@example.com",
+      password: "password123",
+      displayName: "User One"
+    })
+    .expect(201);
+
+  await userTwoAgent
+    .post("/auth/register")
+    .send({
+      email: "user-two@example.com",
+      password: "password123",
+      displayName: "User Two"
+    })
+    .expect(201);
+
+  await userOneAgent
+    .post("/projects")
+    .send({
+      name: "User One Project"
+    })
+    .expect(201);
+
+  await userTwoAgent
+    .post("/projects")
+    .send({
+      name: "User Two Project"
+    })
+    .expect(201);
+
+  const response = await userOneAgent.get("/projects").expect(200);
+
+  expect(response.body.projects).toHaveLength(1);
+  expect(response.body.projects[0].name).toBe("User One Project");
+});
+
+it("excludes archived projects by default", async () => {
+  const agent = request.agent(app);
+
+  await agent
+    .post("/auth/register")
+    .send({
+      email: "owner@example.com",
+      password: "password123",
+      displayName: "Project Owner"
+    })
+    .expect(201);
+
+  const activeProjectResponse = await agent
+    .post("/projects")
+    .send({
+      name: "Active Project"
+    })
+    .expect(201);
+
+  const archivedProjectResponse = await agent
+    .post("/projects")
+    .send({
+      name: "Archived Project"
+    })
+    .expect(201);
+
+  await prisma.project.update({
+    where: {
+      id: archivedProjectResponse.body.project.id
+    },
+    data: {
+      isArchived: true
+    }
+  });
+
+  const response = await agent.get("/projects").expect(200);
+
+  expect(response.body.projects).toHaveLength(1);
+  expect(response.body.projects[0].id).toBe(activeProjectResponse.body.project.id);
+  expect(response.body.projects[0].name).toBe("Active Project");
+});

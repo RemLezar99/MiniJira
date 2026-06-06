@@ -42,3 +42,43 @@ export async function createProject({ input, userId }: CreateProjectArgs) {
     });
   });
 }
+
+type ListProjectsArgs = {
+  userId: string;
+};
+
+export async function listProjectsForUser({ userId }: ListProjectsArgs) {
+  return prisma.project.findMany({
+    where: {
+      isArchived: false,
+      members: {
+        some: {
+          userId
+        }
+      }
+    },
+    include: {
+      owner: {
+        select: {
+          id: true,
+          email: true,
+          displayName: true
+        }
+      },
+      members: {
+        where: {
+          userId
+        },
+        select: {
+          userId: true,
+          projectId: true,
+          role: true,
+          joinedAt: true
+        }
+      }
+    },
+    orderBy: {
+      updatedAt: "desc"
+    }
+  });
+}
