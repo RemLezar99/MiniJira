@@ -1,4 +1,5 @@
 import { useAuthState } from "../hooks";
+import { LogoutButton } from "./LogoutButton";
 
 export function AuthStatus() {
   const { currentUser, isLoading, isAuthenticated, isUnauthenticated, error } =
@@ -21,8 +22,12 @@ export function AuthStatus() {
   }
 
   return (
-    <p>
-      Logged in as <strong>{currentUser.displayName}</strong> ({currentUser.email})
-    </p>
+    <div>
+      <p>
+        Logged in as <strong>{currentUser.displayName}</strong> ({currentUser.email})
+      </p>
+
+      <LogoutButton />
+    </div>
   );
 }
