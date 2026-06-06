@@ -1,6 +1,7 @@
 import { createBrowserRouter, Link } from "react-router-dom";
 import { AuthStatus } from "../features/auth/components/AuthStatus";
 import { RegisterPage } from "../features/auth/pages/RegisterPage";
+import { LoginPage } from "../features/auth/pages/LoginPage";
 
 function HomePage() {
   return (
@@ -12,18 +13,16 @@ function HomePage() {
         <Link to="/register">Register</Link>
       </nav>
 
+      <nav>
+        <Link to="/login">Log in</Link>
+      </nav>
+
       <AuthStatus />
     </main>
   );
 }
 
-function LoginPage() {
-  return (
-    <main>
-      <h1>Login</h1>
-    </main>
-  );
-}
+
 
 function ProjectsPage() {
   return (
