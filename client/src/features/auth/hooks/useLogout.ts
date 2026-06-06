@@ -9,9 +9,6 @@ export function useLogout() {
     mutationFn: logout,
     onSuccess: () => {
       queryClient.setQueryData(authQueryKeys.currentUser, null);
-      queryClient.removeQueries({
-        queryKey: authQueryKeys.currentUser
-      });
     }
   });
 }

@@ -35,11 +35,17 @@ export async function logout(): Promise<LogoutResponse> {
   }
 }
 
-export async function getCurrentUser(): Promise<AuthUser> {
+export async function getCurrentUser(): Promise<AuthUser | null> {
   try {
     const response = await apiClient.get<AuthResponse>("/auth/me");
     return response.data.user;
   } catch (error) {
-    throw toApiError(error);
+    const apiError = toApiError(error);
+
+    if (apiError.status === 401) {
+      return null;
+    }
+
+    throw apiError;
   }
 }

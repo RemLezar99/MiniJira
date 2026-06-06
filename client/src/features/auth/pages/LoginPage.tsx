@@ -1,13 +1,19 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { useLogin } from "../hooks";
 import { loginFormSchema, type LoginFormValues } from "../schemas";
 import type { ApiError } from "../../../api/apiError";
 
+
 export function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const loginMutation = useLogin();
+
+  const from =
+  (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ??
+  "/projects";
 
   const {
     register,
@@ -24,7 +30,7 @@ export function LoginPage() {
   function onSubmit(values: LoginFormValues) {
     loginMutation.mutate(values, {
       onSuccess: () => {
-        navigate("/projects");
+        navigate(from, { replace: true });
       }
     });
   }

@@ -1,28 +1,10 @@
-import { createBrowserRouter, Link } from "react-router-dom";
+import { createBrowserRouter } from "react-router-dom";
 import { AuthStatus } from "../features/auth/components/AuthStatus";
-import { RegisterPage } from "../features/auth/pages/RegisterPage";
+import { ProtectedRoute } from "../features/auth/components/ProtectedRoute";
+import { PublicOnlyRoute } from "../features/auth/components/PublicOnlyRoute";
 import { LoginPage } from "../features/auth/pages/LoginPage";
-
-function HomePage() {
-  return (
-    <main>
-      <h1>Mini Jira</h1>
-      <p>Project issue tracking app.</p>
-
-      <nav>
-        <Link to="/register">Register</Link>
-      </nav>
-
-      <nav>
-        <Link to="/login">Log in</Link>
-      </nav>
-
-      <AuthStatus />
-    </main>
-  );
-}
-
-
+import { RegisterPage } from "../features/auth/pages/RegisterPage";
+import { HomePage } from "../features/home/pages/Homepage";
 
 function ProjectsPage() {
   return (
@@ -37,6 +19,7 @@ function ProjectDetailPage() {
   return (
     <main>
       <h1>Project Detail</h1>
+      <AuthStatus />
     </main>
   );
 }
@@ -45,6 +28,7 @@ function IssueDetailPage() {
   return (
     <main>
       <h1>Issue Detail</h1>
+      <AuthStatus />
     </main>
   );
 }
@@ -55,23 +39,33 @@ export const router = createBrowserRouter([
     element: <HomePage />
   },
   {
-    path: "/login",
-    element: <LoginPage />
+    element: <PublicOnlyRoute />,
+    children: [
+      {
+        path: "/login",
+        element: <LoginPage />
+      },
+      {
+        path: "/register",
+        element: <RegisterPage />
+      }
+    ]
   },
   {
-    path: "/register",
-    element: <RegisterPage />
-  },
-  {
-    path: "/projects",
-    element: <ProjectsPage />
-  },
-  {
-    path: "/projects/:projectId",
-    element: <ProjectDetailPage />
-  },
-  {
-    path: "/projects/:projectId/issues/:issueId",
-    element: <IssueDetailPage />
+    element: <ProtectedRoute />,
+    children: [
+      {
+        path: "/projects",
+        element: <ProjectsPage />
+      },
+      {
+        path: "/projects/:projectId",
+        element: <ProjectDetailPage />
+      },
+      {
+        path: "/projects/:projectId/issues/:issueId",
+        element: <IssueDetailPage />
+      }
+    ]
   }
 ]);
