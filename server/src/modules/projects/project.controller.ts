@@ -3,11 +3,13 @@ import { HttpError } from "../../lib/httpError.js";
 import {
   createProject,
   getProjectForUser,
-  listProjectsForUser
+  listProjectsForUser,
+  updateProject
 } from "./project.service.js";
 import type {
   CreateProjectInput,
-  ProjectParams
+  ProjectParams,
+  UpdateProjectInput
 } from "./project.schemas.js";
 
 export const createProjectController: RequestHandler = async (req, res, next) => {
@@ -58,6 +60,28 @@ export const getProjectController: RequestHandler = async (req, res, next) => {
     const project = await getProjectForUser({
       projectId,
       userId: req.user.id
+    });
+
+    res.status(200).json({
+      project
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateProjectController: RequestHandler = async (req, res, next) => {
+  try {
+    if (!req.user) {
+      throw new HttpError(401, "Authentication required");
+    }
+
+    const { projectId } = req.params as ProjectParams;
+
+    const project = await updateProject({
+      projectId,
+      userId: req.user.id,
+      input: req.body as UpdateProjectInput
     });
 
     res.status(200).json({

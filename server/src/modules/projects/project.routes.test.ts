@@ -436,4 +436,221 @@ describe("project routes", () => {
 
     expect(response.body.message).toBe("Project not found");
   });
+
+  it("allows an owner to update a project", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Old Project Name",
+      description: "Old description"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  const response = await owner.agent
+    .patch(`/projects/${projectId}`)
+    .send({
+      name: "New Project Name",
+      description: "New description"
+    })
+    .expect(200);
+
+  expect(response.body.project).toMatchObject({
+    id: projectId,
+    name: "New Project Name",
+    description: "New description"
+  });
+});
+
+it("allows an admin to update a project", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const admin = await registerAgent("admin@example.com", "Admin");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Admin Editable Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.create({
+    data: {
+      projectId,
+      userId: admin.user.id,
+      role: ProjectRole.ADMIN
+    }
+  });
+
+  const response = await admin.agent
+    .patch(`/projects/${projectId}`)
+    .send({
+      name: "Updated By Admin"
+    })
+    .expect(200);
+
+  expect(response.body.project.name).toBe("Updated By Admin");
+});
+
+it("does not allow a member to update a project", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const member = await registerAgent("member@example.com", "Member");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Member Restricted Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.create({
+    data: {
+      projectId,
+      userId: member.user.id,
+      role: ProjectRole.MEMBER
+    }
+  });
+
+  const response = await member.agent
+    .patch(`/projects/${projectId}`)
+    .send({
+      name: "Illegal Member Update"
+    })
+    .expect(403);
+
+  expect(response.body.message).toBe(
+    "You do not have permission to perform this action"
+  );
+});
+
+it("does not allow a viewer to update a project", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const viewer = await registerAgent("viewer@example.com", "Viewer");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Viewer Restricted Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.create({
+    data: {
+      projectId,
+      userId: viewer.user.id,
+      role: ProjectRole.VIEWER
+    }
+  });
+
+  const response = await viewer.agent
+    .patch(`/projects/${projectId}`)
+    .send({
+      name: "Illegal Viewer Update"
+    })
+    .expect(403);
+
+  expect(response.body.message).toBe(
+    "You do not have permission to perform this action"
+  );
+});
+
+it("does not allow a non-member to update a project", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const outsider = await registerAgent("outsider@example.com", "Outsider");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Private Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  const response = await outsider.agent
+    .patch(`/projects/${projectId}`)
+    .send({
+      name: "Outsider Update"
+    })
+    .expect(404);
+
+  expect(response.body.message).toBe("Project not found");
+});
+
+it("validates update project input", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Validation Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  const response = await owner.agent
+    .patch(`/projects/${projectId}`)
+    .send({
+      name: ""
+    })
+    .expect(400);
+
+  expect(response.body.message).toContain("Project name is required");
+});
+
+it("requires at least one field when updating a project", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Empty Update Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  const response = await owner.agent
+    .patch(`/projects/${projectId}`)
+    .send({})
+    .expect(400);
+
+  expect(response.body.message).toContain("At least one field must be provided");
+});
+
+it("allows updating only the project description", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Description Only Project",
+      description: "Before"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  const response = await owner.agent
+    .patch(`/projects/${projectId}`)
+    .send({
+      description: "After"
+    })
+    .expect(200);
+
+  expect(response.body.project).toMatchObject({
+    id: projectId,
+    name: "Description Only Project",
+    description: "After"
+  });
+});
 });

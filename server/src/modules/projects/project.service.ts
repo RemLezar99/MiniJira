@@ -1,11 +1,17 @@
 import { ProjectRole } from "../../generated/prisma/enums.js";
 import { prisma } from "../../lib/prisma.js";
-import type { CreateProjectInput } from "./project.schemas.js";
+import type { CreateProjectInput, UpdateProjectInput } from "./project.schemas.js";
 import { HttpError } from "../../lib/httpError.js";
 
 type CreateProjectArgs = {
   input: CreateProjectInput;
   userId: string;
+};
+
+type UpdateProjectArgs = {
+  projectId: string;
+  userId: string;
+  input: UpdateProjectInput;
 };
 
 export async function createProject({ input, userId }: CreateProjectArgs) {
@@ -42,6 +48,26 @@ export async function createProject({ input, userId }: CreateProjectArgs) {
       }
     });
   });
+}
+
+async function getMembership(projectId: string, userId: string) {
+  return prisma.projectMember.findUnique({
+    where: {
+      projectId_userId: {
+        projectId,
+        userId
+      }
+    }
+  });
+}
+
+function requireProjectRole(
+  role: ProjectRole | undefined,
+  allowedRoles: ProjectRole[]
+) {
+  if (!role || !allowedRoles.includes(role)) {
+    throw new HttpError(403, "You do not have permission to perform this action");
+  }
 }
 
 type ListProjectsArgs = {
@@ -144,3 +170,38 @@ const projectIncludeForCurrentUser = (userId: string) =>
       }
     }
   }) as const;
+
+  export async function updateProject({
+  projectId,
+  userId,
+  input
+}: UpdateProjectArgs) {
+  const membership = await getMembership(projectId, userId);
+
+  if (!membership) {
+    throw new HttpError(404, "Project not found");
+  }
+
+  requireProjectRole(membership.role, [ProjectRole.OWNER, ProjectRole.ADMIN]);
+
+  const project = await prisma.project.findUnique({
+    where: {
+      id: projectId
+    }
+  });
+
+  if (!project || project.isArchived) {
+    throw new HttpError(404, "Project not found");
+  }
+
+  return prisma.project.update({
+    where: {
+      id: projectId
+    },
+    data: {
+      name: input.name,
+      description: input.description
+    },
+    include: projectIncludeForCurrentUser(userId)
+  });
+}
