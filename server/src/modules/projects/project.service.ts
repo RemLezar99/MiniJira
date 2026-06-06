@@ -14,6 +14,15 @@ type UpdateProjectArgs = {
   input: UpdateProjectInput;
 };
 
+type ListProjectsArgs = {
+  userId: string;
+};
+
+type ArchiveProjectArgs = {
+  projectId: string;
+  userId: string;
+};
+
 export async function createProject({ input, userId }: CreateProjectArgs) {
   return prisma.$transaction(async (tx) => {
     const project = await tx.project.create({
@@ -70,9 +79,7 @@ function requireProjectRole(
   }
 }
 
-type ListProjectsArgs = {
-  userId: string;
-};
+
 
 export async function listProjectsForUser({ userId }: ListProjectsArgs) {
   return prisma.project.findMany({
@@ -201,6 +208,36 @@ const projectIncludeForCurrentUser = (userId: string) =>
     data: {
       name: input.name,
       description: input.description
+    },
+    include: projectIncludeForCurrentUser(userId)
+  });
+}
+
+export async function archiveProject({ projectId, userId }: ArchiveProjectArgs) {
+  const membership = await getMembership(projectId, userId);
+
+  if (!membership) {
+    throw new HttpError(404, "Project not found");
+  }
+
+  requireProjectRole(membership.role, [ProjectRole.OWNER]);
+
+  const project = await prisma.project.findUnique({
+    where: {
+      id: projectId
+    }
+  });
+
+  if (!project || project.isArchived) {
+    throw new HttpError(404, "Project not found");
+  }
+
+  return prisma.project.update({
+    where: {
+      id: projectId
+    },
+    data: {
+      isArchived: true
     },
     include: projectIncludeForCurrentUser(userId)
   });

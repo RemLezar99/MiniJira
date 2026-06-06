@@ -653,4 +653,218 @@ it("allows updating only the project description", async () => {
     description: "After"
   });
 });
+
+it("allows an owner to archive a project", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Project To Archive"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  const archiveResponse = await owner.agent
+    .delete(`/projects/${projectId}`)
+    .expect(200);
+
+  expect(archiveResponse.body.project).toMatchObject({
+    id: projectId,
+    isArchived: true
+  });
+
+  const project = await prisma.project.findUniqueOrThrow({
+    where: {
+      id: projectId
+    }
+  });
+
+  expect(project.isArchived).toBe(true);
+});
+
+it("does not allow an admin to archive a project", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const admin = await registerAgent("admin@example.com", "Admin");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Admin Cannot Archive Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.create({
+    data: {
+      projectId,
+      userId: admin.user.id,
+      role: ProjectRole.ADMIN
+    }
+  });
+
+  const response = await admin.agent.delete(`/projects/${projectId}`).expect(403);
+
+  expect(response.body.message).toBe(
+    "You do not have permission to perform this action"
+  );
+
+  const project = await prisma.project.findUniqueOrThrow({
+    where: {
+      id: projectId
+    }
+  });
+
+  expect(project.isArchived).toBe(false);
+});
+
+it("does not allow a member to archive a project", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const member = await registerAgent("member@example.com", "Member");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Member Cannot Archive Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.create({
+    data: {
+      projectId,
+      userId: member.user.id,
+      role: ProjectRole.MEMBER
+    }
+  });
+
+  const response = await member.agent.delete(`/projects/${projectId}`).expect(403);
+
+  expect(response.body.message).toBe(
+    "You do not have permission to perform this action"
+  );
+
+  const project = await prisma.project.findUniqueOrThrow({
+    where: {
+      id: projectId
+    }
+  });
+
+  expect(project.isArchived).toBe(false);
+});
+
+it("does not allow a viewer to archive a project", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const viewer = await registerAgent("viewer@example.com", "Viewer");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Viewer Cannot Archive Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.create({
+    data: {
+      projectId,
+      userId: viewer.user.id,
+      role: ProjectRole.VIEWER
+    }
+  });
+
+  const response = await viewer.agent.delete(`/projects/${projectId}`).expect(403);
+
+  expect(response.body.message).toBe(
+    "You do not have permission to perform this action"
+  );
+
+  const project = await prisma.project.findUniqueOrThrow({
+    where: {
+      id: projectId
+    }
+  });
+
+  expect(project.isArchived).toBe(false);
+});
+
+it("does not allow a non-member to archive a project", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const outsider = await registerAgent("outsider@example.com", "Outsider");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Private Archive Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  const response = await outsider.agent.delete(`/projects/${projectId}`).expect(404);
+
+  expect(response.body.message).toBe("Project not found");
+
+  const project = await prisma.project.findUniqueOrThrow({
+    where: {
+      id: projectId
+    }
+  });
+
+  expect(project.isArchived).toBe(false);
+});
+
+it("hides archived projects from the normal project list", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+
+  const activeProjectResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Active Project"
+    })
+    .expect(201);
+
+  const archivedProjectResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Archived Project"
+    })
+    .expect(201);
+
+  await owner.agent
+    .delete(`/projects/${archivedProjectResponse.body.project.id}`)
+    .expect(200);
+
+  const listResponse = await owner.agent.get("/projects").expect(200);
+
+  expect(listResponse.body.projects).toHaveLength(1);
+  expect(listResponse.body.projects[0]).toMatchObject({
+    id: activeProjectResponse.body.project.id,
+    name: "Active Project",
+    isArchived: false
+  });
+});
+
+it("does not return archived project details", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Archived Detail Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await owner.agent.delete(`/projects/${projectId}`).expect(200);
+
+  const response = await owner.agent.get(`/projects/${projectId}`).expect(404);
+
+  expect(response.body.message).toBe("Project not found");
+});
 });

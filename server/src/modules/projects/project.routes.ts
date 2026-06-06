@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../../middleware/requireAuth.js";
 import { validateRequest } from "../../middleware/validateRequest.js";
 import {
+  archiveProjectController,
   createProjectController,
   getProjectController,
   listProjectsController,
@@ -39,4 +40,11 @@ projectRoutes.patch(
     body: updateProjectSchema
   }),
   updateProjectController
+);
+
+projectRoutes.delete(
+  "/:projectId",
+  requireAuth,
+  validateRequest({ params: projectParamsSchema }),
+  archiveProjectController
 );
