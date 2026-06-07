@@ -1,5 +1,5 @@
 import { createBrowserRouter } from "react-router-dom";
-import { AuthStatus } from "../features/auth/components/AuthStatus";
+import { AppLayout } from "../components/layout/AppLayout";
 import { ProtectedRoute } from "../features/auth/components/ProtectedRoute";
 import { PublicOnlyRoute } from "../features/auth/components/PublicOnlyRoute";
 import { LoginPage } from "../features/auth/pages/LoginPage";
@@ -8,28 +8,28 @@ import { HomePage } from "../features/home/pages/Homepage";
 
 function ProjectsPage() {
   return (
-    <main>
+    <>
       <h1>Projects</h1>
-      <AuthStatus />
-    </main>
+      <p>Your project list will appear here.</p>
+    </>
   );
 }
 
 function ProjectDetailPage() {
   return (
-    <main>
+    <>
       <h1>Project Detail</h1>
-      <AuthStatus />
-    </main>
+      <p>Project details will appear here.</p>
+    </>
   );
 }
 
 function IssueDetailPage() {
   return (
-    <main>
+    <>
       <h1>Issue Detail</h1>
-      <AuthStatus />
-    </main>
+      <p>Issue details will appear here.</p>
+    </>
   );
 }
 
@@ -55,16 +55,21 @@ export const router = createBrowserRouter([
     element: <ProtectedRoute />,
     children: [
       {
-        path: "/projects",
-        element: <ProjectsPage />
-      },
-      {
-        path: "/projects/:projectId",
-        element: <ProjectDetailPage />
-      },
-      {
-        path: "/projects/:projectId/issues/:issueId",
-        element: <IssueDetailPage />
+        element: <AppLayout />,
+        children: [
+          {
+            path: "/projects",
+            element: <ProjectsPage />
+          },
+          {
+            path: "/projects/:projectId",
+            element: <ProjectDetailPage />
+          },
+          {
+            path: "/projects/:projectId/issues/:issueId",
+            element: <IssueDetailPage />
+          }
+        ]
       }
     ]
   }
