@@ -1661,4 +1661,52 @@ it("creates an activity event when a project member is removed", async () => {
     removedRole: ProjectRole.MEMBER
   });
 });
+it("does not allow removing the last owner", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Last Owner Remove Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  const response = await owner.agent
+    .delete(`/projects/${projectId}/members/${owner.user.id}`)
+    .expect(400);
+
+  expect(response.body.message).toBe("Project must have at least one owner");
+
+  const membership = await prisma.projectMember.findUnique({
+    where: {
+      projectId_userId: {
+        projectId,
+        userId: owner.user.id
+      }
+    }
+  });
+
+  expect(membership).not.toBeNull();
+});
+it("does not allow non-members to list project members", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const outsider = await registerAgent("outsider@example.com", "Outsider");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Hidden Members Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  const response = await outsider.agent
+    .get(`/projects/${projectId}/members`)
+    .expect(404);
+
+  expect(response.body.message).toBe("Project not found");
+});
 });
