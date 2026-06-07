@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "ActivityEventType" ADD VALUE 'PROJECT_MEMBER_ROLE_CHANGED';

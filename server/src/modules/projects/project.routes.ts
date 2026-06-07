@@ -8,12 +8,15 @@ import {
   getProjectController,
   listProjectMembersController,
   listProjectsController,
-  updateProjectController
+  updateProjectController,
+  updateProjectMemberRoleController
 } from "./project.controller.js";
 import {
   addProjectMemberSchema,
   createProjectSchema,
+  projectMemberParamsSchema,
   projectParamsSchema,
+  updateProjectMemberRoleSchema,
   updateProjectSchema
 } from "./project.schemas.js";
 
@@ -43,6 +46,16 @@ projectRoutes.post(
     body: addProjectMemberSchema
   }),
   addProjectMemberController
+);
+
+projectRoutes.patch(
+  "/:projectId/members/:userId",
+  requireAuth,
+  validateRequest({
+    params: projectMemberParamsSchema,
+    body: updateProjectMemberRoleSchema
+  }),
+  updateProjectMemberRoleController
 );
 
 projectRoutes.get(

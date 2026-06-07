@@ -992,4 +992,331 @@ it("creates an activity event when a project member is added", async () => {
     role: ProjectRole.MEMBER
   });
 });
+it("allows an owner to update a project member role", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const member = await registerAgent("member@example.com", "Member");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Owner Role Update Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.create({
+    data: {
+      projectId,
+      userId: member.user.id,
+      role: ProjectRole.MEMBER
+    }
+  });
+
+  const response = await owner.agent
+    .patch(`/projects/${projectId}/members/${member.user.id}`)
+    .send({
+      role: ProjectRole.ADMIN
+    })
+    .expect(200);
+
+  expect(response.body.member).toMatchObject({
+    projectId,
+    userId: member.user.id,
+    role: ProjectRole.ADMIN,
+    user: {
+      id: member.user.id,
+      email: "member@example.com",
+      displayName: "Member"
+    }
+  });
+});
+
+it("allows an admin to update a non-owner project member role", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const admin = await registerAgent("admin@example.com", "Admin");
+  const member = await registerAgent("member@example.com", "Member");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Admin Role Update Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.createMany({
+    data: [
+      {
+        projectId,
+        userId: admin.user.id,
+        role: ProjectRole.ADMIN
+      },
+      {
+        projectId,
+        userId: member.user.id,
+        role: ProjectRole.MEMBER
+      }
+    ]
+  });
+
+  const response = await admin.agent
+    .patch(`/projects/${projectId}/members/${member.user.id}`)
+    .send({
+      role: ProjectRole.VIEWER
+    })
+    .expect(200);
+
+  expect(response.body.member).toMatchObject({
+    userId: member.user.id,
+    role: ProjectRole.VIEWER
+  });
+});
+
+it("does not allow a member to update project member roles", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const member = await registerAgent("member@example.com", "Member");
+  const target = await registerAgent("target@example.com", "Target");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Member Role Restricted Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.createMany({
+    data: [
+      {
+        projectId,
+        userId: member.user.id,
+        role: ProjectRole.MEMBER
+      },
+      {
+        projectId,
+        userId: target.user.id,
+        role: ProjectRole.VIEWER
+      }
+    ]
+  });
+
+  const response = await member.agent
+    .patch(`/projects/${projectId}/members/${target.user.id}`)
+    .send({
+      role: ProjectRole.ADMIN
+    })
+    .expect(403);
+
+  expect(response.body.message).toBe(
+    "You do not have permission to perform this action"
+  );
+});
+
+it("does not allow a viewer to update project member roles", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const viewer = await registerAgent("viewer@example.com", "Viewer");
+  const target = await registerAgent("target@example.com", "Target");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Viewer Role Restricted Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.createMany({
+    data: [
+      {
+        projectId,
+        userId: viewer.user.id,
+        role: ProjectRole.VIEWER
+      },
+      {
+        projectId,
+        userId: target.user.id,
+        role: ProjectRole.MEMBER
+      }
+    ]
+  });
+
+  const response = await viewer.agent
+    .patch(`/projects/${projectId}/members/${target.user.id}`)
+    .send({
+      role: ProjectRole.ADMIN
+    })
+    .expect(403);
+
+  expect(response.body.message).toBe(
+    "You do not have permission to perform this action"
+  );
+});
+
+it("does not allow an admin to demote an owner", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const admin = await registerAgent("admin@example.com", "Admin");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Admin Cannot Demote Owner Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.create({
+    data: {
+      projectId,
+      userId: admin.user.id,
+      role: ProjectRole.ADMIN
+    }
+  });
+
+  const response = await admin.agent
+    .patch(`/projects/${projectId}/members/${owner.user.id}`)
+    .send({
+      role: ProjectRole.MEMBER
+    })
+    .expect(403);
+
+  expect(response.body.message).toBe("Admins cannot change an owner's role");
+});
+
+it("does not allow demoting the last owner", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Last Owner Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  const response = await owner.agent
+    .patch(`/projects/${projectId}/members/${owner.user.id}`)
+    .send({
+      role: ProjectRole.ADMIN
+    })
+    .expect(400);
+
+  expect(response.body.message).toBe("Project must have at least one owner");
+});
+
+it("allows demoting an owner when another owner remains", async () => {
+  const ownerOne = await registerAgent("owner-one@example.com", "Owner One");
+  const ownerTwo = await registerAgent("owner-two@example.com", "Owner Two");
+
+  const createResponse = await ownerOne.agent
+    .post("/projects")
+    .send({
+      name: "Multiple Owner Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.create({
+    data: {
+      projectId,
+      userId: ownerTwo.user.id,
+      role: ProjectRole.OWNER
+    }
+  });
+
+  const response = await ownerOne.agent
+    .patch(`/projects/${projectId}/members/${ownerTwo.user.id}`)
+    .send({
+      role: ProjectRole.ADMIN
+    })
+    .expect(200);
+
+  expect(response.body.member).toMatchObject({
+    userId: ownerTwo.user.id,
+    role: ProjectRole.ADMIN
+  });
+});
+
+it("validates updated project member role", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const member = await registerAgent("member@example.com", "Member");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Role Validation Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.create({
+    data: {
+      projectId,
+      userId: member.user.id,
+      role: ProjectRole.MEMBER
+    }
+  });
+
+  const response = await owner.agent
+    .patch(`/projects/${projectId}/members/${member.user.id}`)
+    .send({
+      role: "INVALID_ROLE"
+    })
+    .expect(400);
+
+  expect(response.body.message).toContain("role");
+});
+
+it("creates an activity event when a project member role changes", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const member = await registerAgent("member@example.com", "Member");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Role Change Activity Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.create({
+    data: {
+      projectId,
+      userId: member.user.id,
+      role: ProjectRole.MEMBER
+    }
+  });
+
+  await owner.agent
+    .patch(`/projects/${projectId}/members/${member.user.id}`)
+    .send({
+      role: ProjectRole.ADMIN
+    })
+    .expect(200);
+
+  const activityEvent = await prisma.activityEvent.findFirst({
+    where: {
+      projectId,
+      actorId: owner.user.id,
+      targetUserId: member.user.id,
+      type: ActivityEventType.PROJECT_MEMBER_ROLE_CHANGED
+    }
+  });
+
+  expect(activityEvent).not.toBeNull();
+  expect(activityEvent?.oldValue).toBe(ProjectRole.MEMBER);
+  expect(activityEvent?.newValue).toBe(ProjectRole.ADMIN);
+  expect(activityEvent?.metadata).toMatchObject({
+    oldRole: ProjectRole.MEMBER,
+    newRole: ProjectRole.ADMIN
+  });
+});
 });

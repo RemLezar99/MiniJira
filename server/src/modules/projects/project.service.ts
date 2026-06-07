@@ -4,7 +4,8 @@ import { ActivityEventType, ProjectRole } from "../../generated/prisma/enums.js"
 import type {
   AddProjectMemberInput,
   CreateProjectInput,
-  UpdateProjectInput
+  UpdateProjectInput,
+  UpdateProjectMemberRoleInput
 } from "./project.schemas.js";
 import {
   requireProjectMembership,
@@ -46,6 +47,13 @@ type AddProjectMemberArgs = {
   projectId: string;
   userId: string;
   input: AddProjectMemberInput;
+};
+
+type UpdateProjectMemberRoleArgs = {
+  projectId: string;
+  actorUserId: string;
+  targetUserId: string;
+  input: UpdateProjectMemberRoleInput;
 };
 
 const projectIncludeForCurrentUser = (userId: string) =>
@@ -390,5 +398,136 @@ export async function addProjectMember({
     });
 
     return membership;
+  });
+}
+
+async function countProjectOwners(projectId: string) {
+  return prisma.projectMember.count({
+    where: {
+      projectId,
+      role: ProjectRole.OWNER
+    }
+  });
+}
+
+export async function updateProjectMemberRole({
+  projectId,
+  actorUserId,
+  targetUserId,
+  input
+}: UpdateProjectMemberRoleArgs) {
+  const actorMembership = await requireProjectRole({
+    projectId,
+    userId: actorUserId,
+    allowedRoles: [ProjectRole.OWNER, ProjectRole.ADMIN]
+  });
+
+  const project = await prisma.project.findUnique({
+    where: {
+      id: projectId
+    }
+  });
+
+  if (!project || project.isArchived) {
+    throw new HttpError(404, "Project not found");
+  }
+
+  const targetMembership = await prisma.projectMember.findUnique({
+    where: {
+      projectId_userId: {
+        projectId,
+        userId: targetUserId
+      }
+    }
+  });
+
+  if (!targetMembership) {
+    throw new HttpError(404, "Project member not found");
+  }
+
+  if (
+    actorMembership.role === ProjectRole.ADMIN &&
+    targetMembership.role === ProjectRole.OWNER
+  ) {
+    throw new HttpError(403, "Admins cannot change an owner's role");
+  }
+
+  if (
+    targetMembership.role === ProjectRole.OWNER &&
+    input.role !== ProjectRole.OWNER
+  ) {
+    const ownerCount = await countProjectOwners(projectId);
+
+    if (ownerCount <= 1) {
+      throw new HttpError(400, "Project must have at least one owner");
+    }
+  }
+
+  if (targetMembership.role === input.role) {
+    return prisma.projectMember.findUniqueOrThrow({
+      where: {
+        projectId_userId: {
+          projectId,
+          userId: targetUserId
+        }
+      },
+      select: {
+        projectId: true,
+        userId: true,
+        role: true,
+        joinedAt: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            displayName: true
+          }
+        }
+      }
+    });
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const updatedMember = await tx.projectMember.update({
+      where: {
+        projectId_userId: {
+          projectId,
+          userId: targetUserId
+        }
+      },
+      data: {
+        role: input.role
+      },
+      select: {
+        projectId: true,
+        userId: true,
+        role: true,
+        joinedAt: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            displayName: true
+          }
+        }
+      }
+    });
+
+    await tx.activityEvent.create({
+      data: {
+        type: ActivityEventType.PROJECT_MEMBER_ROLE_CHANGED,
+        projectId,
+        actorId: actorUserId,
+        targetUserId,
+        oldValue: targetMembership.role,
+        newValue: input.role,
+        metadata: {
+          oldRole: targetMembership.role,
+          newRole: input.role
+        }
+      }
+    });
+
+    return updatedMember;
   });
 }

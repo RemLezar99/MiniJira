@@ -7,13 +7,16 @@ import {
   getProjectForUser,
   listProjectMembers,
   listProjectsForUser,
-  updateProject
+  updateProject,
+  updateProjectMemberRole
 } from "./project.service.js";
 import type {
   AddProjectMemberInput,
   CreateProjectInput,
+  ProjectMemberParams,
   ProjectParams,
-  UpdateProjectInput
+  UpdateProjectInput,
+  UpdateProjectMemberRoleInput
 } from "./project.schemas.js";
 
 export const createProjectController: RequestHandler = async (req, res, next) => {
@@ -161,6 +164,33 @@ export const addProjectMemberController: RequestHandler = async (
     });
 
     res.status(201).json({
+      member
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateProjectMemberRoleController: RequestHandler = async (
+  req,
+  res,
+  next
+) => {
+  try {
+    if (!req.user) {
+      throw new HttpError(401, "Authentication required");
+    }
+
+    const { projectId, userId } = req.params as ProjectMemberParams;
+
+    const member = await updateProjectMemberRole({
+      projectId,
+      actorUserId: req.user.id,
+      targetUserId: userId,
+      input: req.body as UpdateProjectMemberRoleInput
+    });
+
+    res.status(200).json({
       member
     });
   } catch (error) {
