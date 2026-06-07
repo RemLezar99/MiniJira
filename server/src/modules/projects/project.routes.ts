@@ -2,6 +2,7 @@ import { Router } from "express";
 import { requireAuth } from "../../middleware/requireAuth.js";
 import { validateRequest } from "../../middleware/validateRequest.js";
 import {
+  addProjectMemberController,
   archiveProjectController,
   createProjectController,
   getProjectController,
@@ -10,6 +11,7 @@ import {
   updateProjectController
 } from "./project.controller.js";
 import {
+  addProjectMemberSchema,
   createProjectSchema,
   projectParamsSchema,
   updateProjectSchema
@@ -31,6 +33,16 @@ projectRoutes.get(
   requireAuth,
   validateRequest({ params: projectParamsSchema }),
   listProjectMembersController
+);
+
+projectRoutes.post(
+  "/:projectId/members",
+  requireAuth,
+  validateRequest({
+    params: projectParamsSchema,
+    body: addProjectMemberSchema
+  }),
+  addProjectMemberController
 );
 
 projectRoutes.get(
@@ -56,3 +68,4 @@ projectRoutes.delete(
   validateRequest({ params: projectParamsSchema }),
   archiveProjectController
 );
+

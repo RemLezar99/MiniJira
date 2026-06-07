@@ -1,6 +1,7 @@
 import type { RequestHandler } from "express";
 import { HttpError } from "../../lib/httpError.js";
 import {
+  addProjectMember,
   archiveProject,
   createProject,
   getProjectForUser,
@@ -9,6 +10,7 @@ import {
   updateProject
 } from "./project.service.js";
 import type {
+  AddProjectMemberInput,
   CreateProjectInput,
   ProjectParams,
   UpdateProjectInput
@@ -134,6 +136,32 @@ export const listProjectMembersController: RequestHandler = async (
 
     res.status(200).json({
       members
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const addProjectMemberController: RequestHandler = async (
+  req,
+  res,
+  next
+) => {
+  try {
+    if (!req.user) {
+      throw new HttpError(401, "Authentication required");
+    }
+
+    const { projectId } = req.params as ProjectParams;
+
+    const member = await addProjectMember({
+      projectId,
+      userId: req.user.id,
+      input: req.body as AddProjectMemberInput
+    });
+
+    res.status(201).json({
+      member
     });
   } catch (error) {
     next(error);

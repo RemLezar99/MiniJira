@@ -53,7 +53,7 @@ model User {
   reportedIssues Issue[]         @relation("IssueReporter")
   assignedIssues Issue[]         @relation("IssueAssignee")
   comments       Comment[]
-  activityEvents ActivityEvent[]
+  activityEvents ActivityEvent[] @relation("ActivityActor")
 }
 
 model Project {
@@ -143,16 +143,23 @@ model IssueLabel {
 }
 
 model ActivityEvent {
-  id        String            @id @default(uuid())
-  projectId String
-  issueId   String?
-  actorId   String
-  eventType ActivityEventType
-  oldValue  String?
-  newValue  String?
-  createdAt DateTime          @default(now())
+  id           String            @id @default(uuid())
+  type         ActivityEventType
+  projectId    String
+  issueId      String?
+  actorId      String
+  targetUserId String?
+  oldValue     String?
+  newValue     String?
+  metadata     Json?
+  createdAt    DateTime          @default(now())
 
   project Project @relation(fields: [projectId], references: [id])
   issue   Issue?  @relation(fields: [issueId], references: [id])
-  actor   User    @relation(fields: [actorId], references: [id])
+  actor   User    @relation("ActivityActor", fields: [actorId], references: [id])
+
+  @@index([projectId, createdAt])
+  @@index([issueId, createdAt])
+  @@index([actorId])
+  @@index([targetUserId])
 }

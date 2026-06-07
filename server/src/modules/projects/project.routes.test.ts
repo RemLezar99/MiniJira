@@ -1,8 +1,12 @@
 import request from "supertest";
 import { describe, expect, it } from "vitest";
-import { ProjectRole } from "../../generated/prisma/enums.js";
+import {
+  ActivityEventType,
+  ProjectRole
+} from "../../generated/prisma/enums.js";
 import { app } from "../../app.js";
 import { prisma } from "../../lib/prisma.js";
+
 
 async function registerAgent(email: string, displayName = "Test User") {
   const agent = request.agent(app);
@@ -720,5 +724,272 @@ it("does not list members for archived projects", async () => {
     .expect(404);
 
   expect(response.body.message).toBe("Project not found");
+});
+it("allows an owner to add a project member", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const newMember = await registerAgent("new-member@example.com", "New Member");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Owner Add Member Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+ const response = await owner.agent
+  .post(`/projects/${projectId}/members`)
+  .send({
+    userId: newMember.user.id,
+    role: ProjectRole.MEMBER
+  })
+  .expect(201);
+
+  expect(response.body.member).toMatchObject({
+    projectId,
+    userId: newMember.user.id,
+    role: ProjectRole.MEMBER,
+    user: {
+      id: newMember.user.id,
+      email: "new-member@example.com",
+      displayName: "New Member"
+    }
+  });
+
+  const membership = await prisma.projectMember.findUnique({
+    where: {
+      projectId_userId: {
+        projectId,
+        userId: newMember.user.id
+      }
+    }
+  });
+
+  expect(membership?.role).toBe(ProjectRole.MEMBER);
+});
+
+it("allows an admin to add a project member", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const admin = await registerAgent("admin@example.com", "Admin");
+  const newMember = await registerAgent("new-member@example.com", "New Member");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Admin Add Member Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.create({
+    data: {
+      projectId,
+      userId: admin.user.id,
+      role: ProjectRole.ADMIN
+    }
+  });
+
+  const response = await admin.agent
+    .post(`/projects/${projectId}/members`)
+    .send({
+      userId: newMember.user.id,
+      role: ProjectRole.VIEWER
+    })
+    .expect(201);
+
+  expect(response.body.member).toMatchObject({
+    projectId,
+    userId: newMember.user.id,
+    role: ProjectRole.VIEWER
+  });
+});
+
+it("does not allow a member to add project members", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const member = await registerAgent("member@example.com", "Member");
+  const targetUser = await registerAgent("target@example.com", "Target");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Member Restricted Add Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.create({
+    data: {
+      projectId,
+      userId: member.user.id,
+      role: ProjectRole.MEMBER
+    }
+  });
+
+  const response = await member.agent
+    .post(`/projects/${projectId}/members`)
+    .send({
+      userId: targetUser.user.id,
+      role: ProjectRole.MEMBER
+    })
+    .expect(403);
+
+  expect(response.body.message).toBe(
+    "You do not have permission to perform this action"
+  );
+});
+
+it("does not allow a viewer to add project members", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const viewer = await registerAgent("viewer@example.com", "Viewer");
+  const targetUser = await registerAgent("target@example.com", "Target");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Viewer Restricted Add Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.create({
+    data: {
+      projectId,
+      userId: viewer.user.id,
+      role: ProjectRole.VIEWER
+    }
+  });
+
+  const response = await viewer.agent
+    .post(`/projects/${projectId}/members`)
+    .send({
+      userId: targetUser.user.id,
+      role: ProjectRole.MEMBER
+    })
+    .expect(403);
+
+  expect(response.body.message).toBe(
+    "You do not have permission to perform this action"
+  );
+});
+
+it("does not allow non-members to add project members", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const outsider = await registerAgent("outsider@example.com", "Outsider");
+  const targetUser = await registerAgent("target@example.com", "Target");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Hidden Add Member Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  const response = await outsider.agent
+    .post(`/projects/${projectId}/members`)
+    .send({
+      userId: targetUser.user.id,
+      role: ProjectRole.MEMBER
+    })
+    .expect(404);
+
+  expect(response.body.message).toBe("Project not found");
+});
+
+it("does not allow adding the same user twice", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const member = await registerAgent("member@example.com", "Member");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Duplicate Add Member Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await owner.agent
+    .post(`/projects/${projectId}/members`)
+    .send({
+      userId: member.user.id,
+      role: ProjectRole.MEMBER
+    })
+    .expect(201);
+
+  const response = await owner.agent
+    .post(`/projects/${projectId}/members`)
+    .send({
+      userId: member.user.id,
+      role: ProjectRole.ADMIN
+    })
+    .expect(409);
+
+  expect(response.body.message).toBe("User is already a project member");
+});
+
+it("validates role when adding a project member", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const member = await registerAgent("member@example.com", "Member");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Role Validation Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  const response = await owner.agent
+    .post(`/projects/${projectId}/members`)
+    .send({
+      userId: member.user.id,
+      role: "OWNER"
+    })
+    .expect(400);
+
+  expect(response.body.message).toContain("role");
+});
+
+it("creates an activity event when a project member is added", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const member = await registerAgent("member@example.com", "Member");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Activity Add Member Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await owner.agent
+    .post(`/projects/${projectId}/members`)
+    .send({
+      userId: member.user.id,
+      role: ProjectRole.MEMBER
+    })
+    .expect(201);
+
+  const activityEvent = await prisma.activityEvent.findFirst({
+    where: {
+      projectId,
+      actorId: owner.user.id,
+      targetUserId: member.user.id,
+      type: ActivityEventType.PROJECT_MEMBER_ADDED
+    }
+  });
+
+  expect(activityEvent).not.toBeNull();
+  expect(activityEvent?.metadata).toMatchObject({
+    role: ProjectRole.MEMBER
+  });
 });
 });

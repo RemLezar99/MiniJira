@@ -1,7 +1,8 @@
-import { ProjectRole } from "../../generated/prisma/enums.js";
 import { prisma } from "../../lib/prisma.js";
 import { HttpError } from "../../lib/httpError.js";
+import { ActivityEventType, ProjectRole } from "../../generated/prisma/enums.js";
 import type {
+  AddProjectMemberInput,
   CreateProjectInput,
   UpdateProjectInput
 } from "./project.schemas.js";
@@ -9,6 +10,7 @@ import {
   requireProjectMembership,
   requireProjectRole
 } from "./project.auth.js";
+
 
 type CreateProjectArgs = {
   input: CreateProjectInput;
@@ -38,6 +40,12 @@ type ArchiveProjectArgs = {
 type ListProjectMembersArgs = {
   projectId: string;
   userId: string;
+};
+
+type AddProjectMemberArgs = {
+  projectId: string;
+  userId: string;
+  input: AddProjectMemberInput;
 };
 
 const projectIncludeForCurrentUser = (userId: string) =>
@@ -298,4 +306,89 @@ export async function listProjectMembers({
   });
 
   return members;
+}
+
+export async function addProjectMember({
+  projectId,
+  userId,
+  input
+}: AddProjectMemberArgs) {
+  await requireProjectRole({
+    projectId,
+    userId,
+    allowedRoles: [ProjectRole.OWNER, ProjectRole.ADMIN]
+  });
+
+  const project = await prisma.project.findUnique({
+    where: {
+      id: projectId
+    }
+  });
+
+  if (!project || project.isArchived) {
+    throw new HttpError(404, "Project not found");
+  }
+
+  const userToAdd = await prisma.user.findUnique({
+    where: {
+      id: input.userId
+    },
+    select: {
+      id: true
+    }
+  });
+
+  if (!userToAdd) {
+    throw new HttpError(404, "User not found");
+  }
+
+  const existingMembership = await prisma.projectMember.findUnique({
+    where: {
+      projectId_userId: {
+        projectId,
+        userId: input.userId
+      }
+    }
+  });
+
+  if (existingMembership) {
+    throw new HttpError(409, "User is already a project member");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const membership = await tx.projectMember.create({
+      data: {
+        projectId,
+        userId: input.userId,
+        role: input.role
+      },
+      select: {
+        projectId: true,
+        userId: true,
+        role: true,
+        joinedAt: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            displayName: true
+          }
+        }
+      }
+    });
+
+    await tx.activityEvent.create({
+      data: {
+        type: ActivityEventType.PROJECT_MEMBER_ADDED,
+        projectId,
+        actorId: userId,
+        targetUserId: input.userId,
+        metadata: {
+          role: input.role
+        }
+      }
+    });
+
+    return membership;
+  });
 }
