@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { CreateProjectForm } from "../components/CreateProjectForm";
 import { useProjects } from "../hooks";
 
 export function ProjectsPage() {
@@ -8,6 +9,7 @@ export function ProjectsPage() {
     return (
       <section>
         <h1>Projects</h1>
+        <CreateProjectForm />
         <p>Loading projects...</p>
       </section>
     );
@@ -17,6 +19,7 @@ export function ProjectsPage() {
     return (
       <section>
         <h1>Projects</h1>
+        <CreateProjectForm />
         <p role="alert">
           Could not load projects: {projectsQuery.error.message}
         </p>
@@ -26,40 +29,39 @@ export function ProjectsPage() {
 
   const projects = projectsQuery.data ?? [];
 
-  if (projects.length === 0) {
-    return (
-      <section>
-        <h1>Projects</h1>
-        <p>You do not have any projects yet.</p>
-        <p>Create project functionality will be added next.</p>
-      </section>
-    );
-  }
-
   return (
     <section>
       <h1>Projects</h1>
 
-      <ul>
-        {projects.map((project) => {
-          const currentUserRole = project.members[0]?.role;
+      <CreateProjectForm />
 
-          return (
-            <li key={project.id}>
-              <Link to={`/projects/${project.id}`}>
-                <strong>{project.name}</strong>
-              </Link>
+      {projects.length === 0 ? (
+        <div>
+          <h2>No projects yet</h2>
+          <p>Create your first project using the form above.</p>
+        </div>
+      ) : (
+        <ul>
+          {projects.map((project) => {
+            const currentUserRole = project.members[0]?.role;
 
-              {project.description ? <p>{project.description}</p> : null}
+            return (
+              <li key={project.id}>
+                <Link to={`/projects/${project.id}`}>
+                  <strong>{project.name}</strong>
+                </Link>
 
-              <p>
-                Owner: {project.owner.displayName} · Your role:{" "}
-                {currentUserRole ?? "Unknown"}
-              </p>
-            </li>
-          );
-        })}
-      </ul>
+                {project.description ? <p>{project.description}</p> : null}
+
+                <p>
+                  Owner: {project.owner.displayName} · Your role:{" "}
+                  {currentUserRole ?? "Unknown"}
+                </p>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
   );
 }
