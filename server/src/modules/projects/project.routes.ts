@@ -8,6 +8,7 @@ import {
   getProjectController,
   listProjectMembersController,
   listProjectsController,
+  removeProjectMemberController,
   updateProjectController,
   updateProjectMemberRoleController
 } from "./project.controller.js";
@@ -56,6 +57,15 @@ projectRoutes.patch(
     body: updateProjectMemberRoleSchema
   }),
   updateProjectMemberRoleController
+);
+
+projectRoutes.delete(
+  "/:projectId/members/:userId",
+  requireAuth,
+  validateRequest({
+    params: projectMemberParamsSchema
+  }),
+  removeProjectMemberController
 );
 
 projectRoutes.get(

@@ -56,6 +56,12 @@ type UpdateProjectMemberRoleArgs = {
   input: UpdateProjectMemberRoleInput;
 };
 
+type RemoveProjectMemberArgs = {
+  projectId: string;
+  actorUserId: string;
+  targetUserId: string;
+};
+
 const projectIncludeForCurrentUser = (userId: string) =>
   ({
     owner: {
@@ -529,5 +535,96 @@ export async function updateProjectMemberRole({
     });
 
     return updatedMember;
+  });
+}
+
+export async function removeProjectMember({
+  projectId,
+  actorUserId,
+  targetUserId
+}: RemoveProjectMemberArgs) {
+  const actorMembership = await requireProjectRole({
+    projectId,
+    userId: actorUserId,
+    allowedRoles: [ProjectRole.OWNER, ProjectRole.ADMIN]
+  });
+
+  const project = await prisma.project.findUnique({
+    where: {
+      id: projectId
+    }
+  });
+
+  if (!project || project.isArchived) {
+    throw new HttpError(404, "Project not found");
+  }
+
+  const targetMembership = await prisma.projectMember.findUnique({
+    where: {
+      projectId_userId: {
+        projectId,
+        userId: targetUserId
+      }
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          email: true,
+          displayName: true
+        }
+      }
+    }
+  });
+
+  if (!targetMembership) {
+    throw new HttpError(404, "Project member not found");
+  }
+
+  if (
+    actorMembership.role === ProjectRole.ADMIN &&
+    targetMembership.role === ProjectRole.OWNER
+  ) {
+    throw new HttpError(403, "Admins cannot remove an owner");
+  }
+
+  if (targetMembership.role === ProjectRole.OWNER) {
+    const ownerCount = await countProjectOwners(projectId);
+
+    if (ownerCount <= 1) {
+      throw new HttpError(400, "Project must have at least one owner");
+    }
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.projectMember.delete({
+      where: {
+        projectId_userId: {
+          projectId,
+          userId: targetUserId
+        }
+      }
+    });
+
+    await tx.activityEvent.create({
+      data: {
+        type: ActivityEventType.PROJECT_MEMBER_REMOVED,
+        projectId,
+        actorId: actorUserId,
+        targetUserId,
+        oldValue: targetMembership.role,
+        metadata: {
+          removedRole: targetMembership.role
+        }
+      }
+    });
+
+    return {
+      projectId,
+      userId: targetUserId,
+      role: targetMembership.role,
+      joinedAt: targetMembership.joinedAt,
+      user: targetMembership.user
+    };
   });
 }

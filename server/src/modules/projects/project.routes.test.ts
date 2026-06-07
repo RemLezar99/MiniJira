@@ -1319,4 +1319,346 @@ it("creates an activity event when a project member role changes", async () => {
     newRole: ProjectRole.ADMIN
   });
 });
+it("allows an owner to remove a project member", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const member = await registerAgent("member@example.com", "Member");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Owner Remove Member Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.create({
+    data: {
+      projectId,
+      userId: member.user.id,
+      role: ProjectRole.MEMBER
+    }
+  });
+
+  const response = await owner.agent
+    .delete(`/projects/${projectId}/members/${member.user.id}`)
+    .expect(200);
+
+  expect(response.body.member).toMatchObject({
+    projectId,
+    userId: member.user.id,
+    role: ProjectRole.MEMBER,
+    user: {
+      id: member.user.id,
+      email: "member@example.com",
+      displayName: "Member"
+    }
+  });
+
+  const membership = await prisma.projectMember.findUnique({
+    where: {
+      projectId_userId: {
+        projectId,
+        userId: member.user.id
+      }
+    }
+  });
+
+  expect(membership).toBeNull();
+});
+
+it("allows an admin to remove a non-owner project member", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const admin = await registerAgent("admin@example.com", "Admin");
+  const member = await registerAgent("member@example.com", "Member");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Admin Remove Member Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.createMany({
+    data: [
+      {
+        projectId,
+        userId: admin.user.id,
+        role: ProjectRole.ADMIN
+      },
+      {
+        projectId,
+        userId: member.user.id,
+        role: ProjectRole.MEMBER
+      }
+    ]
+  });
+
+  await admin.agent
+    .delete(`/projects/${projectId}/members/${member.user.id}`)
+    .expect(200);
+
+  const membership = await prisma.projectMember.findUnique({
+    where: {
+      projectId_userId: {
+        projectId,
+        userId: member.user.id
+      }
+    }
+  });
+
+  expect(membership).toBeNull();
+});
+
+it("does not allow a member to remove project members", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const member = await registerAgent("member@example.com", "Member");
+  const target = await registerAgent("target@example.com", "Target");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Member Cannot Remove Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.createMany({
+    data: [
+      {
+        projectId,
+        userId: member.user.id,
+        role: ProjectRole.MEMBER
+      },
+      {
+        projectId,
+        userId: target.user.id,
+        role: ProjectRole.VIEWER
+      }
+    ]
+  });
+
+  const response = await member.agent
+    .delete(`/projects/${projectId}/members/${target.user.id}`)
+    .expect(403);
+
+  expect(response.body.message).toBe(
+    "You do not have permission to perform this action"
+  );
+});
+
+it("does not allow a viewer to remove project members", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const viewer = await registerAgent("viewer@example.com", "Viewer");
+  const target = await registerAgent("target@example.com", "Target");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Viewer Cannot Remove Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.createMany({
+    data: [
+      {
+        projectId,
+        userId: viewer.user.id,
+        role: ProjectRole.VIEWER
+      },
+      {
+        projectId,
+        userId: target.user.id,
+        role: ProjectRole.MEMBER
+      }
+    ]
+  });
+
+  const response = await viewer.agent
+    .delete(`/projects/${projectId}/members/${target.user.id}`)
+    .expect(403);
+
+  expect(response.body.message).toBe(
+    "You do not have permission to perform this action"
+  );
+});
+
+it("does not allow an admin to remove an owner", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const admin = await registerAgent("admin@example.com", "Admin");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Admin Cannot Remove Owner Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.create({
+    data: {
+      projectId,
+      userId: admin.user.id,
+      role: ProjectRole.ADMIN
+    }
+  });
+
+  const response = await admin.agent
+    .delete(`/projects/${projectId}/members/${owner.user.id}`)
+    .expect(403);
+
+  expect(response.body.message).toBe("Admins cannot remove an owner");
+});
+
+it("does not allow removing the last owner", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Last Owner Remove Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  const response = await owner.agent
+    .delete(`/projects/${projectId}/members/${owner.user.id}`)
+    .expect(400);
+
+  expect(response.body.message).toBe("Project must have at least one owner");
+
+  const membership = await prisma.projectMember.findUnique({
+    where: {
+      projectId_userId: {
+        projectId,
+        userId: owner.user.id
+      }
+    }
+  });
+
+  expect(membership).not.toBeNull();
+});
+
+it("allows removing an owner when another owner remains", async () => {
+  const ownerOne = await registerAgent("owner-one@example.com", "Owner One");
+  const ownerTwo = await registerAgent("owner-two@example.com", "Owner Two");
+
+  const createResponse = await ownerOne.agent
+    .post("/projects")
+    .send({
+      name: "Multiple Owner Remove Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.create({
+    data: {
+      projectId,
+      userId: ownerTwo.user.id,
+      role: ProjectRole.OWNER
+    }
+  });
+
+  await ownerOne.agent
+    .delete(`/projects/${projectId}/members/${ownerTwo.user.id}`)
+    .expect(200);
+
+  const ownerTwoMembership = await prisma.projectMember.findUnique({
+    where: {
+      projectId_userId: {
+        projectId,
+        userId: ownerTwo.user.id
+      }
+    }
+  });
+
+  expect(ownerTwoMembership).toBeNull();
+
+  const ownerCount = await prisma.projectMember.count({
+    where: {
+      projectId,
+      role: ProjectRole.OWNER
+    }
+  });
+
+  expect(ownerCount).toBe(1);
+});
+
+it("does not allow non-members to remove project members", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const outsider = await registerAgent("outsider@example.com", "Outsider");
+  const target = await registerAgent("target@example.com", "Target");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Hidden Remove Member Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.create({
+    data: {
+      projectId,
+      userId: target.user.id,
+      role: ProjectRole.MEMBER
+    }
+  });
+
+  const response = await outsider.agent
+    .delete(`/projects/${projectId}/members/${target.user.id}`)
+    .expect(404);
+
+  expect(response.body.message).toBe("Project not found");
+});
+
+it("creates an activity event when a project member is removed", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const member = await registerAgent("member@example.com", "Member");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Remove Member Activity Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.create({
+    data: {
+      projectId,
+      userId: member.user.id,
+      role: ProjectRole.MEMBER
+    }
+  });
+
+  await owner.agent
+    .delete(`/projects/${projectId}/members/${member.user.id}`)
+    .expect(200);
+
+  const activityEvent = await prisma.activityEvent.findFirst({
+    where: {
+      projectId,
+      actorId: owner.user.id,
+      targetUserId: member.user.id,
+      type: ActivityEventType.PROJECT_MEMBER_REMOVED
+    }
+  });
+
+  expect(activityEvent).not.toBeNull();
+  expect(activityEvent?.oldValue).toBe(ProjectRole.MEMBER);
+  expect(activityEvent?.metadata).toMatchObject({
+    removedRole: ProjectRole.MEMBER
+  });
+});
 });

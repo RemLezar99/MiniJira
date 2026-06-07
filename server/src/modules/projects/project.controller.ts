@@ -7,6 +7,7 @@ import {
   getProjectForUser,
   listProjectMembers,
   listProjectsForUser,
+  removeProjectMember,
   updateProject,
   updateProjectMemberRole
 } from "./project.service.js";
@@ -188,6 +189,32 @@ export const updateProjectMemberRoleController: RequestHandler = async (
       actorUserId: req.user.id,
       targetUserId: userId,
       input: req.body as UpdateProjectMemberRoleInput
+    });
+
+    res.status(200).json({
+      member
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const removeProjectMemberController: RequestHandler = async (
+  req,
+  res,
+  next
+) => {
+  try {
+    if (!req.user) {
+      throw new HttpError(401, "Authentication required");
+    }
+
+    const { projectId, userId } = req.params as ProjectMemberParams;
+
+    const member = await removeProjectMember({
+      projectId,
+      actorUserId: req.user.id,
+      targetUserId: userId
     });
 
     res.status(200).json({
