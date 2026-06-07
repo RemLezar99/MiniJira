@@ -201,15 +201,19 @@ const projectIncludeForCurrentUser = (userId: string) =>
     throw new HttpError(404, "Project not found");
   }
 
-  return prisma.project.update({
+  await prisma.project.update({
     where: {
       id: projectId
     },
     data: {
       name: input.name,
       description: input.description
-    },
-    include: projectIncludeForCurrentUser(userId)
+    }
+  });
+
+  return getProjectForUser({
+    projectId,
+    userId
   });
 }
 
@@ -242,3 +246,4 @@ export async function archiveProject({ projectId, userId }: ArchiveProjectArgs) 
     include: projectIncludeForCurrentUser(userId)
   });
 }
+

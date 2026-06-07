@@ -6,15 +6,7 @@ import { LoginPage } from "../features/auth/pages/LoginPage";
 import { RegisterPage } from "../features/auth/pages/RegisterPage";
 import { HomePage } from "../features/home/pages/Homepage";
 import { ProjectsPage } from "../features/projects/pages/Projectspage";
-
-function ProjectDetailPage() {
-  return (
-    <>
-      <h1>Project Detail</h1>
-      <p>Project details will appear here.</p>
-    </>
-  );
-}
+import { ProjectDetailPage } from "../features/projects/pages/ProjectDetailPage";
 
 function IssueDetailPage() {
   return (

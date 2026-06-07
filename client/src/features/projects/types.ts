@@ -25,8 +25,29 @@ export type Project = {
   members: ProjectMembership[];
 };
 
+export type ProjectDetails = {
+  id: string;
+  name: string;
+  description: string | null;
+  ownerId: string;
+  isArchived: boolean;
+  createdAt: string;
+  updatedAt: string;
+  owner: ProjectOwner;
+  currentUserRole: ProjectRole;
+  currentUserMembership: ProjectMembership;
+};
+
 export type ProjectsResponse = {
   projects: Project[];
+};
+
+export type ProjectResponse = {
+  project: Project;
+};
+
+export type ProjectDetailsResponse = {
+  project: ProjectDetails;
 };
 
 export type CreateProjectInput = {
@@ -34,6 +55,7 @@ export type CreateProjectInput = {
   description?: string;
 };
 
-export type ProjectResponse = {
-  project: Project;
+export type UpdateProjectInput = {
+  name?: string;
+  description?: string;
 };
