@@ -589,4 +589,136 @@ describe("project routes", () => {
       isArchived: false
     });
   });
+
+  it("lists members for a project member", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const admin = await registerAgent("admin@example.com", "Admin");
+  const member = await registerAgent("member@example.com", "Member");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Members Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await prisma.projectMember.createMany({
+    data: [
+      {
+        projectId,
+        userId: admin.user.id,
+        role: ProjectRole.ADMIN
+      },
+      {
+        projectId,
+        userId: member.user.id,
+        role: ProjectRole.MEMBER
+      }
+    ]
+  });
+
+  const response = await member.agent
+    .get(`/projects/${projectId}/members`)
+    .expect(200);
+
+  expect(response.body.members).toHaveLength(3);
+
+  const membersByEmail = new Map(
+    response.body.members.map(
+      (projectMember: {
+        role: ProjectRole;
+        user: {
+          email: string;
+          displayName: string;
+        };
+      }) => [projectMember.user.email, projectMember]
+    )
+  );
+
+  expect(membersByEmail.get("owner@example.com")).toMatchObject({
+    role: ProjectRole.OWNER,
+    user: {
+      email: "owner@example.com",
+      displayName: "Owner"
+    }
+  });
+
+  expect(membersByEmail.get("admin@example.com")).toMatchObject({
+    role: ProjectRole.ADMIN,
+    user: {
+      email: "admin@example.com",
+      displayName: "Admin"
+    }
+  });
+
+  expect(membersByEmail.get("member@example.com")).toMatchObject({
+    role: ProjectRole.MEMBER,
+    user: {
+      email: "member@example.com",
+      displayName: "Member"
+    }
+  });
+});
+
+it("requires authentication when listing project members", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Private Members Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  const response = await request(app)
+    .get(`/projects/${projectId}/members`)
+    .expect(401);
+
+  expect(response.body.message).toBe("Authentication required");
+});
+
+it("does not allow non-members to list project members", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const outsider = await registerAgent("outsider@example.com", "Outsider");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Hidden Members Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  const response = await outsider.agent
+    .get(`/projects/${projectId}/members`)
+    .expect(404);
+
+  expect(response.body.message).toBe("Project not found");
+});
+
+it("does not list members for archived projects", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+
+  const createResponse = await owner.agent
+    .post("/projects")
+    .send({
+      name: "Archived Members Project"
+    })
+    .expect(201);
+
+  const projectId = createResponse.body.project.id;
+
+  await owner.agent.delete(`/projects/${projectId}`).expect(200);
+
+  const response = await owner.agent
+    .get(`/projects/${projectId}/members`)
+    .expect(404);
+
+  expect(response.body.message).toBe("Project not found");
+});
 });

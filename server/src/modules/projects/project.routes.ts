@@ -5,6 +5,7 @@ import {
   archiveProjectController,
   createProjectController,
   getProjectController,
+  listProjectMembersController,
   listProjectsController,
   updateProjectController
 } from "./project.controller.js";
@@ -23,6 +24,13 @@ projectRoutes.post(
   requireAuth,
   validateRequest({ body: createProjectSchema }),
   createProjectController
+);
+
+projectRoutes.get(
+  "/:projectId/members",
+  requireAuth,
+  validateRequest({ params: projectParamsSchema }),
+  listProjectMembersController
 );
 
 projectRoutes.get(

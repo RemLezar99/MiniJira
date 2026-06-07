@@ -35,6 +35,11 @@ type ArchiveProjectArgs = {
   userId: string;
 };
 
+type ListProjectMembersArgs = {
+  projectId: string;
+  userId: string;
+};
+
 const projectIncludeForCurrentUser = (userId: string) =>
   ({
     owner: {
@@ -240,4 +245,57 @@ export async function archiveProject({ projectId, userId }: ArchiveProjectArgs) 
     },
     include: projectIncludeForCurrentUser(userId)
   });
+}
+
+export async function listProjectMembers({
+  projectId,
+  userId
+}: ListProjectMembersArgs) {
+  await requireProjectMembership({
+    projectId,
+    userId
+  });
+
+  const project = await prisma.project.findUnique({
+    where: {
+      id: projectId
+    },
+    select: {
+      id: true,
+      isArchived: true
+    }
+  });
+
+  if (!project || project.isArchived) {
+    throw new HttpError(404, "Project not found");
+  }
+
+  const members = await prisma.projectMember.findMany({
+    where: {
+      projectId
+    },
+    select: {
+      projectId: true,
+      userId: true,
+      role: true,
+      joinedAt: true,
+      user: {
+        select: {
+          id: true,
+          email: true,
+          displayName: true
+        }
+      }
+    },
+    orderBy: [
+      {
+        role: "asc"
+      },
+      {
+        joinedAt: "asc"
+      }
+    ]
+  });
+
+  return members;
 }

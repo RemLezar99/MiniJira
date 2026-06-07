@@ -4,6 +4,7 @@ import {
   archiveProject,
   createProject,
   getProjectForUser,
+  listProjectMembers,
   listProjectsForUser,
   updateProject
 } from "./project.service.js";
@@ -108,6 +109,31 @@ export const archiveProjectController: RequestHandler = async (req, res, next) =
 
     res.status(200).json({
       project
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const listProjectMembersController: RequestHandler = async (
+  req,
+  res,
+  next
+) => {
+  try {
+    if (!req.user) {
+      throw new HttpError(401, "Authentication required");
+    }
+
+    const { projectId } = req.params as ProjectParams;
+
+    const members = await listProjectMembers({
+      projectId,
+      userId: req.user.id
+    });
+
+    res.status(200).json({
+      members
     });
   } catch (error) {
     next(error);

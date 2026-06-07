@@ -90,6 +90,7 @@ app.get("/", (_req, res) => {
           <li><code>POST /projects</code> — requires login cookie</li>
           <li><code>GET /projects/:projectId</code> — requires login cookie and project membership</li>
           <li><code>DELETE /projects/:projectId</code> — archive project, requires OWNER role</li>
+          <li><code>GET /projects/:projectId/members</code> — list project members, requires project membership</li>
         </ul>
 
         <p class="note">
