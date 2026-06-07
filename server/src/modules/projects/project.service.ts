@@ -1,10 +1,26 @@
 import { ProjectRole } from "../../generated/prisma/enums.js";
 import { prisma } from "../../lib/prisma.js";
-import type { CreateProjectInput, UpdateProjectInput } from "./project.schemas.js";
 import { HttpError } from "../../lib/httpError.js";
+import type {
+  CreateProjectInput,
+  UpdateProjectInput
+} from "./project.schemas.js";
+import {
+  requireProjectMembership,
+  requireProjectRole
+} from "./project.auth.js";
 
 type CreateProjectArgs = {
   input: CreateProjectInput;
+  userId: string;
+};
+
+type ListProjectsArgs = {
+  userId: string;
+};
+
+type GetProjectArgs = {
+  projectId: string;
   userId: string;
 };
 
@@ -14,14 +30,74 @@ type UpdateProjectArgs = {
   input: UpdateProjectInput;
 };
 
-type ListProjectsArgs = {
-  userId: string;
-};
-
 type ArchiveProjectArgs = {
   projectId: string;
   userId: string;
 };
+
+const projectIncludeForCurrentUser = (userId: string) =>
+  ({
+    owner: {
+      select: {
+        id: true,
+        email: true,
+        displayName: true
+      }
+    },
+    members: {
+      where: {
+        userId
+      },
+      select: {
+        userId: true,
+        projectId: true,
+        role: true,
+        joinedAt: true
+      }
+    }
+  }) as const;
+
+function toProjectDetails(
+  project: {
+    id: string;
+    name: string;
+    description: string | null;
+    ownerId: string;
+    isArchived: boolean;
+    createdAt: Date;
+    updatedAt: Date;
+    owner: {
+      id: string;
+      email: string;
+      displayName: string;
+    };
+    members: {
+      userId: string;
+      projectId: string;
+      role: ProjectRole;
+      joinedAt: Date;
+    }[];
+  }
+) {
+  const currentUserMembership = project.members[0];
+
+  if (!currentUserMembership) {
+    throw new HttpError(404, "Project not found");
+  }
+
+  return {
+    id: project.id,
+    name: project.name,
+    description: project.description,
+    ownerId: project.ownerId,
+    isArchived: project.isArchived,
+    createdAt: project.createdAt,
+    updatedAt: project.updatedAt,
+    owner: project.owner,
+    currentUserRole: currentUserMembership.role,
+    currentUserMembership
+  };
+}
 
 export async function createProject({ input, userId }: CreateProjectArgs) {
   return prisma.$transaction(async (tx) => {
@@ -45,41 +121,10 @@ export async function createProject({ input, userId }: CreateProjectArgs) {
       where: {
         id: project.id
       },
-      include: {
-        owner: {
-          select: {
-            id: true,
-            email: true,
-            displayName: true
-          }
-        },
-        members: true
-      }
+      include: projectIncludeForCurrentUser(userId)
     });
   });
 }
-
-async function getMembership(projectId: string, userId: string) {
-  return prisma.projectMember.findUnique({
-    where: {
-      projectId_userId: {
-        projectId,
-        userId
-      }
-    }
-  });
-}
-
-function requireProjectRole(
-  role: ProjectRole | undefined,
-  allowedRoles: ProjectRole[]
-) {
-  if (!role || !allowedRoles.includes(role)) {
-    throw new HttpError(403, "You do not have permission to perform this action");
-  }
-}
-
-
 
 export async function listProjectsForUser({ userId }: ListProjectsArgs) {
   return prisma.project.findMany({
@@ -91,47 +136,23 @@ export async function listProjectsForUser({ userId }: ListProjectsArgs) {
         }
       }
     },
-    include: {
-      owner: {
-        select: {
-          id: true,
-          email: true,
-          displayName: true
-        }
-      },
-      members: {
-        where: {
-          userId
-        },
-        select: {
-          userId: true,
-          projectId: true,
-          role: true,
-          joinedAt: true
-        }
-      }
-    },
+    include: projectIncludeForCurrentUser(userId),
     orderBy: {
       updatedAt: "desc"
     }
   });
 }
 
-type GetProjectArgs = {
-  projectId: string;
-  userId: string;
-};
-
 export async function getProjectForUser({ projectId, userId }: GetProjectArgs) {
+  await requireProjectMembership({
+    projectId,
+    userId
+  });
+
   const project = await prisma.project.findFirst({
     where: {
       id: projectId,
-      isArchived: false,
-      members: {
-        some: {
-          userId
-        }
-      }
+      isArchived: false
     },
     include: projectIncludeForCurrentUser(userId)
   });
@@ -156,40 +177,16 @@ export async function getProjectForUser({ projectId, userId }: GetProjectArgs) {
   };
 }
 
-const projectIncludeForCurrentUser = (userId: string) =>
-  ({
-    owner: {
-      select: {
-        id: true,
-        email: true,
-        displayName: true
-      }
-    },
-    members: {
-      where: {
-        userId
-      },
-      select: {
-        userId: true,
-        projectId: true,
-        role: true,
-        joinedAt: true
-      }
-    }
-  }) as const;
-
-  export async function updateProject({
+export async function updateProject({
   projectId,
   userId,
   input
 }: UpdateProjectArgs) {
-  const membership = await getMembership(projectId, userId);
-
-  if (!membership) {
-    throw new HttpError(404, "Project not found");
-  }
-
-  requireProjectRole(membership.role, [ProjectRole.OWNER, ProjectRole.ADMIN]);
+  await requireProjectRole({
+    projectId,
+    userId,
+    allowedRoles: [ProjectRole.OWNER, ProjectRole.ADMIN]
+  });
 
   const project = await prisma.project.findUnique({
     where: {
@@ -218,13 +215,11 @@ const projectIncludeForCurrentUser = (userId: string) =>
 }
 
 export async function archiveProject({ projectId, userId }: ArchiveProjectArgs) {
-  const membership = await getMembership(projectId, userId);
-
-  if (!membership) {
-    throw new HttpError(404, "Project not found");
-  }
-
-  requireProjectRole(membership.role, [ProjectRole.OWNER]);
+  await requireProjectRole({
+    projectId,
+    userId,
+    allowedRoles: [ProjectRole.OWNER]
+  });
 
   const project = await prisma.project.findUnique({
     where: {
@@ -246,4 +241,3 @@ export async function archiveProject({ projectId, userId }: ArchiveProjectArgs) 
     include: projectIncludeForCurrentUser(userId)
   });
 }
-
