@@ -5,15 +5,7 @@ import { PublicOnlyRoute } from "../features/auth/components/PublicOnlyRoute";
 import { LoginPage } from "../features/auth/pages/LoginPage";
 import { RegisterPage } from "../features/auth/pages/RegisterPage";
 import { HomePage } from "../features/home/pages/Homepage";
-
-function ProjectsPage() {
-  return (
-    <>
-      <h1>Projects</h1>
-      <p>Your project list will appear here.</p>
-    </>
-  );
-}
+import { ProjectsPage } from "../features/projects/pages/Projectspage";
 
 function ProjectDetailPage() {
   return (
