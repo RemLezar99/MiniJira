@@ -2,6 +2,7 @@ import {
   ActivityEventType,
   ProjectRole
 } from "../../generated/prisma/enums.js";
+import type { Prisma } from "../../generated/prisma/client.js";
 import { HttpError } from "../../lib/httpError.js";
 import { prisma } from "../../lib/prisma.js";
 import {
@@ -117,95 +118,103 @@ export async function listIssuesForProject({
   userId,
   query
 }: ListIssuesArgs) {
-  try {
-    await requireProjectMembership({
-      projectId,
-      userId
-    });
+  await requireProjectMembership({
+    projectId,
+    userId
+  });
 
-    const project = await prisma.project.findUnique({
-      where: {
-        id: projectId
-      },
-      select: {
-        id: true,
-        isArchived: true
-      }
-    });
-
-    if (!project || project.isArchived) {
-      throw new HttpError(404, "Project not found");
+  const project = await prisma.project.findUnique({
+    where: {
+      id: projectId
+    },
+    select: {
+      id: true,
+      isArchived: true
     }
+  });
 
-    const skip = (query.page - 1) * query.pageSize;
-    const take = query.pageSize;
+  if (!project || project.isArchived) {
+    throw new HttpError(404, "Project not found");
+  }
 
-    const where = {
-      projectId,
-      archivedAt: null
-    };
+  const skip = (query.page - 1) * query.pageSize;
+  const take = query.pageSize;
 
-    const total = await prisma.issue.count({
-      where
-    });
-
-    const issues = await prisma.issue.findMany({
-      where,
-      include: {
-        reporter: {
-          select: {
-            id: true,
-            email: true,
-            displayName: true
+  const where: Prisma.IssueWhereInput = {
+    projectId,
+    archivedAt: null,
+    status: query.status,
+    priority: query.priority,
+    assigneeId: query.assigneeId,
+    reporterId: query.reporterId,
+    labels: query.labelId
+      ? {
+          some: {
+            labelId: query.labelId
           }
-        },
-        assignee: {
-          select: {
-            id: true,
-            email: true,
-            displayName: true
-          }
-        },
-        labels: {
-          select: {
-            label: {
-              select: {
-                id: true,
-                projectId: true,
-                name: true,
-                color: true
-              }
+        }
+      : undefined
+  };
+
+  const orderBy: Prisma.IssueOrderByWithRelationInput = {
+    [query.sortBy]: query.sortDirection
+  };
+
+  const total = await prisma.issue.count({
+    where
+  });
+
+  const issues = await prisma.issue.findMany({
+    where,
+    include: {
+      reporter: {
+        select: {
+          id: true,
+          email: true,
+          displayName: true
+        }
+      },
+      assignee: {
+        select: {
+          id: true,
+          email: true,
+          displayName: true
+        }
+      },
+      labels: {
+        select: {
+          label: {
+            select: {
+              id: true,
+              projectId: true,
+              name: true,
+              color: true
             }
           }
         }
-      },
-      orderBy: {
-        updatedAt: "desc"
-      },
-      skip,
-      take
-    });
-
-    const normalizedIssues = issues.map((issue) => ({
-      ...issue,
-      labels: issue.labels.map((issueLabel) => issueLabel.label)
-    }));
-
-    const pageCount = Math.ceil(total / query.pageSize);
-
-    return {
-      issues: normalizedIssues,
-      pagination: {
-        page: query.page,
-        pageSize: query.pageSize,
-        total,
-        pageCount,
-        hasNextPage: query.page < pageCount,
-        hasPreviousPage: query.page > 1
       }
-    };
-  } catch (error) {
-    console.error("listIssuesForProject error:", error);
-    throw error;
-  }
+    },
+    orderBy,
+    skip,
+    take
+  });
+
+  const normalizedIssues = issues.map((issue) => ({
+    ...issue,
+    labels: issue.labels.map((issueLabel) => issueLabel.label)
+  }));
+
+  const pageCount = Math.ceil(total / query.pageSize);
+
+  return {
+    issues: normalizedIssues,
+    pagination: {
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
+      pageCount,
+      hasNextPage: query.page < pageCount,
+      hasPreviousPage: query.page > 1
+    }
+  };
 }

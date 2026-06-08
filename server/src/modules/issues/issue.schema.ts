@@ -23,7 +23,29 @@ export const createIssueSchema = z.object({
 
 export const listIssuesQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(20)
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+
+  status: z
+    .enum([
+      IssueStatus.BACKLOG,
+      IssueStatus.TODO,
+      IssueStatus.IN_PROGRESS,
+      IssueStatus.IN_REVIEW,
+      IssueStatus.DONE,
+      IssueStatus.CANCELLED
+    ])
+    .optional(),
+
+  priority: z
+    .enum([Priority.LOW, Priority.MEDIUM, Priority.HIGH, Priority.URGENT])
+    .optional(),
+
+  assigneeId: z.uuid().optional(),
+  reporterId: z.uuid().optional(),
+  labelId: z.uuid().optional(),
+
+  sortBy: z.enum(["createdAt", "updatedAt"]).default("updatedAt"),
+  sortDirection: z.enum(["asc", "desc"]).default("desc")
 });
 
 export type CreateIssueInput = z.infer<typeof createIssueSchema>;

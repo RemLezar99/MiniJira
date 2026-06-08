@@ -515,4 +515,302 @@ it("validates pagination query parameters", async () => {
 
   expect(response.body.message).toBeDefined();
 });
+it("filters issues by status", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const project = await createProject(owner);
+
+  await owner.agent
+    .post(`/projects/${project.id}/issues`)
+    .send({
+      title: "Todo issue",
+      status: IssueStatus.TODO
+    })
+    .expect(201);
+
+  await owner.agent
+    .post(`/projects/${project.id}/issues`)
+    .send({
+      title: "Done issue",
+      status: IssueStatus.DONE
+    })
+    .expect(201);
+
+  const response = await owner.agent
+    .get(`/projects/${project.id}/issues?status=${IssueStatus.DONE}`)
+    .expect(200);
+
+  expect(response.body.issues).toHaveLength(1);
+  expect(response.body.issues[0]).toMatchObject({
+    title: "Done issue",
+    status: IssueStatus.DONE
+  });
+});
+it("filters issues by priority", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const project = await createProject(owner);
+
+  await owner.agent
+    .post(`/projects/${project.id}/issues`)
+    .send({
+      title: "Low priority issue",
+      priority: Priority.LOW
+    })
+    .expect(201);
+
+  await owner.agent
+    .post(`/projects/${project.id}/issues`)
+    .send({
+      title: "Urgent priority issue",
+      priority: Priority.URGENT
+    })
+    .expect(201);
+
+  const response = await owner.agent
+    .get(`/projects/${project.id}/issues?priority=${Priority.URGENT}`)
+    .expect(200);
+
+  expect(response.body.issues).toHaveLength(1);
+  expect(response.body.issues[0]).toMatchObject({
+    title: "Urgent priority issue",
+    priority: Priority.URGENT
+  });
+});
+it("filters issues by assignee", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const assigneeOne = await registerAgent("assignee-one@example.com", "Assignee One");
+  const assigneeTwo = await registerAgent("assignee-two@example.com", "Assignee Two");
+  const project = await createProject(owner);
+
+  await prisma.projectMember.createMany({
+    data: [
+      {
+        projectId: project.id,
+        userId: assigneeOne.user.id,
+        role: ProjectRole.MEMBER
+      },
+      {
+        projectId: project.id,
+        userId: assigneeTwo.user.id,
+        role: ProjectRole.MEMBER
+      }
+    ]
+  });
+
+  await owner.agent
+    .post(`/projects/${project.id}/issues`)
+    .send({
+      title: "Assigned to one",
+      assigneeId: assigneeOne.user.id
+    })
+    .expect(201);
+
+  await owner.agent
+    .post(`/projects/${project.id}/issues`)
+    .send({
+      title: "Assigned to two",
+      assigneeId: assigneeTwo.user.id
+    })
+    .expect(201);
+
+  const response = await owner.agent
+    .get(`/projects/${project.id}/issues?assigneeId=${assigneeOne.user.id}`)
+    .expect(200);
+
+  expect(response.body.issues).toHaveLength(1);
+  expect(response.body.issues[0]).toMatchObject({
+    title: "Assigned to one",
+    assigneeId: assigneeOne.user.id
+  });
+});
+it("filters issues by reporter", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const member = await registerAgent("member@example.com", "Member");
+  const project = await createProject(owner);
+
+  await prisma.projectMember.create({
+    data: {
+      projectId: project.id,
+      userId: member.user.id,
+      role: ProjectRole.MEMBER
+    }
+  });
+
+  await owner.agent
+    .post(`/projects/${project.id}/issues`)
+    .send({
+      title: "Owner reported issue"
+    })
+    .expect(201);
+
+  await member.agent
+    .post(`/projects/${project.id}/issues`)
+    .send({
+      title: "Member reported issue"
+    })
+    .expect(201);
+
+  const response = await owner.agent
+    .get(`/projects/${project.id}/issues?reporterId=${member.user.id}`)
+    .expect(200);
+
+  expect(response.body.issues).toHaveLength(1);
+  expect(response.body.issues[0]).toMatchObject({
+    title: "Member reported issue",
+    reporterId: member.user.id
+  });
+});
+it("filters issues by label", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const project = await createProject(owner);
+
+  const bugLabel = await prisma.label.create({
+    data: {
+      projectId: project.id,
+      name: "bug",
+      color: "#ff0000"
+    }
+  });
+
+  const featureLabel = await prisma.label.create({
+    data: {
+      projectId: project.id,
+      name: "feature",
+      color: "#00ff00"
+    }
+  });
+
+  const bugIssueResponse = await owner.agent
+    .post(`/projects/${project.id}/issues`)
+    .send({
+      title: "Bug issue"
+    })
+    .expect(201);
+
+  const featureIssueResponse = await owner.agent
+    .post(`/projects/${project.id}/issues`)
+    .send({
+      title: "Feature issue"
+    })
+    .expect(201);
+
+  await prisma.issueLabel.createMany({
+    data: [
+      {
+        issueId: bugIssueResponse.body.issue.id,
+        labelId: bugLabel.id
+      },
+      {
+        issueId: featureIssueResponse.body.issue.id,
+        labelId: featureLabel.id
+      }
+    ]
+  });
+
+  const response = await owner.agent
+    .get(`/projects/${project.id}/issues?labelId=${bugLabel.id}`)
+    .expect(200);
+
+  expect(response.body.issues).toHaveLength(1);
+  expect(response.body.issues[0]).toMatchObject({
+    title: "Bug issue"
+  });
+
+  expect(response.body.issues[0].labels[0]).toMatchObject({
+    id: bugLabel.id,
+    name: "bug"
+  });
+});
+it("sorts issues by created date", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const project = await createProject(owner);
+
+  await owner.agent
+    .post(`/projects/${project.id}/issues`)
+    .send({
+      title: "Older issue"
+    })
+    .expect(201);
+
+  await owner.agent
+    .post(`/projects/${project.id}/issues`)
+    .send({
+      title: "Newer issue"
+    })
+    .expect(201);
+
+  const ascendingResponse = await owner.agent
+    .get(`/projects/${project.id}/issues?sortBy=createdAt&sortDirection=asc`)
+    .expect(200);
+
+  expect(ascendingResponse.body.issues[0].title).toBe("Older issue");
+  expect(ascendingResponse.body.issues[1].title).toBe("Newer issue");
+
+  const descendingResponse = await owner.agent
+    .get(`/projects/${project.id}/issues?sortBy=createdAt&sortDirection=desc`)
+    .expect(200);
+
+  expect(descendingResponse.body.issues[0].title).toBe("Newer issue");
+  expect(descendingResponse.body.issues[1].title).toBe("Older issue");
+});
+it("sorts issues by updated date", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const project = await createProject(owner);
+
+  const firstIssueResponse = await owner.agent
+    .post(`/projects/${project.id}/issues`)
+    .send({
+      title: "First issue"
+    })
+    .expect(201);
+
+  await owner.agent
+    .post(`/projects/${project.id}/issues`)
+    .send({
+      title: "Second issue"
+    })
+    .expect(201);
+
+  await prisma.issue.update({
+    where: {
+      id: firstIssueResponse.body.issue.id
+    },
+    data: {
+      description: "Updated later"
+    }
+  });
+
+  const response = await owner.agent
+    .get(`/projects/${project.id}/issues?sortBy=updatedAt&sortDirection=desc`)
+    .expect(200);
+
+  expect(response.body.issues[0].title).toBe("First issue");
+});
+it("returns 400 for invalid issue filters", async () => {
+  const owner = await registerAgent("owner@example.com", "Owner");
+  const project = await createProject(owner);
+
+  const invalidStatusResponse = await owner.agent
+    .get(`/projects/${project.id}/issues?status=INVALID_STATUS`)
+    .expect(400);
+
+  expect(invalidStatusResponse.body.message).toContain("Invalid option");
+
+  const invalidPriorityResponse = await owner.agent
+    .get(`/projects/${project.id}/issues?priority=INVALID_PRIORITY`)
+    .expect(400);
+
+  expect(invalidPriorityResponse.body.message).toContain("Invalid option");
+
+  const invalidAssigneeResponse = await owner.agent
+    .get(`/projects/${project.id}/issues?assigneeId=not-a-uuid`)
+    .expect(400);
+
+  expect(invalidAssigneeResponse.body.message).toBeDefined();
+
+  const invalidSortResponse = await owner.agent
+    .get(`/projects/${project.id}/issues?sortBy=title`)
+    .expect(400);
+
+  expect(invalidSortResponse.body.message).toContain("Invalid option");
+});
 });
