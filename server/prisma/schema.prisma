@@ -106,6 +106,13 @@ model Issue {
   comments Comment[]
   activity ActivityEvent[]
   labels   IssueLabel[]
+
+  @@index([projectId])
+  @@index([reporterId])
+  @@index([assigneeId])
+  @@index([status])
+  @@index([priority])
+  @@index([archivedAt])
 }
 
 model Comment {
