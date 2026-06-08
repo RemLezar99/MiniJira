@@ -20,6 +20,7 @@ import {
   updateProjectMemberRoleSchema,
   updateProjectSchema
 } from "./project.schemas.js";
+import { issueRoutes } from "../issues/issue.routes.js";
 
 export const projectRoutes = Router();
 
@@ -31,6 +32,8 @@ projectRoutes.post(
   validateRequest({ body: createProjectSchema }),
   createProjectController
 );
+
+projectRoutes.use("/:projectId/issues", issueRoutes);
 
 projectRoutes.get(
   "/:projectId/members",

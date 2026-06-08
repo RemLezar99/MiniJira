@@ -93,6 +93,10 @@ app.get("/", (_req, res) => {
           <li><code>GET /projects/:projectId/members</code> — list project members, requires project membership</li>
         </ul>
 
+        <h2>Issue routes</h2>
+        <ul>
+        <li><code>POST /projects/:projectId/issues</code> — create issue, requires OWNER/ADMIN/MEMBER</li>
+        </ul>
         <p class="note">
           Some API routes cannot be tested by clicking in the browser because they require POST requests or authentication cookies.
         </p>
