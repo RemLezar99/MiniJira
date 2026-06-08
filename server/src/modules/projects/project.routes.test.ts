@@ -947,14 +947,14 @@ it("validates role when adding a project member", async () => {
   const projectId = createResponse.body.project.id;
 
   const response = await owner.agent
-    .post(`/projects/${projectId}/members`)
-    .send({
-      userId: member.user.id,
-      role: "OWNER"
-    })
-    .expect(400);
+  .post(`/projects/${projectId}/members`)
+  .send({
+    userId: member.user.id,
+    role: "OWNER"
+  })
+  .expect(400);
 
-  expect(response.body.message).toContain("role");
+  expect(response.body.message).toContain("Invalid option");
 });
 
 it("creates an activity event when a project member is added", async () => {
@@ -1265,13 +1265,13 @@ it("validates updated project member role", async () => {
   });
 
   const response = await owner.agent
-    .patch(`/projects/${projectId}/members/${member.user.id}`)
-    .send({
-      role: "INVALID_ROLE"
-    })
-    .expect(400);
+  .patch(`/projects/${projectId}/members/${member.user.id}`)
+  .send({
+    role: "INVALID_ROLE"
+  })
+  .expect(400);
 
-  expect(response.body.message).toContain("role");
+  expect(response.body.message).toContain("Invalid option");
 });
 
 it("creates an activity event when a project member role changes", async () => {

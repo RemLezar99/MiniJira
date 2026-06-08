@@ -2,6 +2,7 @@ import request from "supertest";
 import { describe, expect, it } from "vitest";
 import { app } from "../../app.js";
 import { prisma } from "../../lib/prisma.js";
+import { z } from "zod";
 
 describe("auth routes", () => {
   it("registers a user and sets an auth cookie", async () => {
@@ -147,17 +148,17 @@ describe("auth routes", () => {
   });
 
   it("validates registration input", async () => {
-    const response = await request(app)
-      .post("/auth/register")
-      .send({
-        email: "not-an-email",
-        password: "short",
-        displayName: ""
-      })
-      .expect(400);
+  const response = await request(app)
+    .post("/auth/register")
+    .send({
+      email: "not-an-email",
+      password: "short",
+      displayName: ""
+    })
+    .expect(400);
 
-    expect(response.body.message).toContain("email");
-    expect(response.body.message).toContain("password");
-    expect(response.body.message).toContain("displayName");
-  });
+  expect(response.body.message).toContain("Invalid email address");
+  expect(response.body.message).toContain("Password must be at least 8 characters");
+  expect(response.body.message).toContain("Display name is required");
+});
 });

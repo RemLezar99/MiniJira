@@ -1,13 +1,17 @@
 import type { RequestHandler } from "express";
-import { z, ZodError } from "zod";
-import { HttpError } from "../lib/httpError.js";
 import type { ParamsDictionary } from "express-serve-static-core";
+import { z } from "zod";
+import { HttpError } from "../lib/httpError.js";
 
 type RequestSchemas = {
   body?: z.ZodType;
-  params?: z.ZodType;
+  params?: z.ZodType<ParamsDictionary>;
   query?: z.ZodType;
 };
+
+function formatZodError(error: z.ZodError) {
+  return error.issues.map((issue) => issue.message).join(", ");
+}
 
 export function validateRequest(schemas: RequestSchemas): RequestHandler {
   return (req, _res, next) => {
@@ -17,24 +21,17 @@ export function validateRequest(schemas: RequestSchemas): RequestHandler {
       }
 
       if (schemas.params) {
-        req.params = schemas.params.parse(req.params) as ParamsDictionary;
+        req.params = schemas.params.parse(req.params);
       }
 
       if (schemas.query) {
-        req.query = schemas.query.parse(req.query) as typeof req.query;
+        schemas.query.parse(req.query);
       }
 
       next();
     } catch (error) {
-      if (error instanceof ZodError) {
-        next(
-          new HttpError(
-            400,
-            error.issues
-              .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
-              .join("; ")
-          )
-        );
+      if (error instanceof z.ZodError) {
+        next(new HttpError(400, formatZodError(error)));
         return;
       }
 

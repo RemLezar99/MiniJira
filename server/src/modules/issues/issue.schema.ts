@@ -21,4 +21,10 @@ export const createIssueSchema = z.object({
   dueDate: z.coerce.date().optional()
 });
 
+export const listIssuesQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20)
+});
+
 export type CreateIssueInput = z.infer<typeof createIssueSchema>;
+export type ListIssuesQuery = z.infer<typeof listIssuesQuerySchema>;
